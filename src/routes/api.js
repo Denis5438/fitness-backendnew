@@ -109,6 +109,10 @@ function authMiddleware(req, res, next) {
   // В production валидируем подпись, в development просто парсим
   if (config.nodeEnv === 'production' && config.telegram.botToken) {
     telegramUser = validateTelegramInitData(initData, config.telegram.botToken);
+    if (!telegramUser) {
+      console.log('⚠️ initData validation failed. NODE_ENV:', config.nodeEnv);
+      console.log('⚠️ initData (first 100 chars):', initData.substring(0, 100));
+    }
   } else {
     // В development режиме просто парсим данные без проверки
     telegramUser = parseInitData(initData);
