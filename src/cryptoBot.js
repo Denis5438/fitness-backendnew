@@ -153,7 +153,6 @@ async function createDepositInvoice(userId, amountUSD, description = 'Попол
     amount: amountUSD,
     description,
     payload: JSON.stringify({ type: 'deposit', userId, amountUSD }),
-    paidBtnName: 'callback',
     expiresIn: 1800, // 30 минут
   });
 
