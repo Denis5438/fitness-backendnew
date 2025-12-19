@@ -50,7 +50,7 @@ class CryptoPayAPI {
     amount,                    // Сумма
     description = '',          // Описание
     hiddenMessage = '',        // Сообщение после оплаты
-    paidBtnName = 'callback',  // Кнопка после оплаты: callback, openUrl, closeBot
+    paidBtnName = '',          // Кнопка после оплаты: callback, openUrl, closeBot, viewItem
     paidBtnUrl = '',           // URL для кнопки
     payload = '',              // Данные для идентификации (до 4096 символов)
     allowComments = true,      // Разрешить комментарии
@@ -62,14 +62,15 @@ class CryptoPayAPI {
       amount: amount.toString(),
       description,
       hidden_message: hiddenMessage,
-      paid_btn_name: paidBtnName,
       payload,
       allow_comments: allowComments,
       allow_anonymous: allowAnonymous,
       expires_in: expiresIn,
     };
 
-    if (paidBtnUrl) {
+    // Добавляем кнопку только если указаны оба параметра
+    if (paidBtnName && paidBtnUrl) {
+      params.paid_btn_name = paidBtnName;
       params.paid_btn_url = paidBtnUrl;
     }
 
