@@ -22,7 +22,8 @@ class CryptoPayAPI {
     const data = await response.json();
 
     if (!data.ok) {
-      throw new Error(data.error?.message || 'CryptoBot API error');
+      console.error('❌ CryptoBot API error:', JSON.stringify(data, null, 2));
+      throw new Error(data.error?.message || data.error?.code || 'CryptoBot API error');
     }
 
     return data.result;
