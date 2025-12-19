@@ -180,8 +180,11 @@ router.get('/balance', authMiddleware, async (req, res) => {
 // Вывод средств (только для тренеров)
 router.post('/withdraw', authMiddleware, async (req, res) => {
   try {
-    // Проверяем что пользователь - тренер или выше
-    if (req.user.role !== 'TRAINER' && req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+    // Проверяем что пользователь - тренер, модератор, админ или владелец (по telegramId)
+    const isAdmin = req.user.telegramId === config.adminTelegramId;
+    const hasRole = ['TRAINER', 'MODERATOR', 'ADMIN'].includes(req.user.role);
+
+    if (!isAdmin && !hasRole) {
       return res.status(403).json({ error: 'Вывод доступен только тренерам' });
     }
 
