@@ -8,6 +8,7 @@ import {
   getUsersByRole,
   getWorkoutStats
 } from './database/users.js';
+import { createDepositInvoice, getCryptoPay } from './cryptoBot.js';
 
 const bot = new Telegraf(config.telegram.botToken);
 
@@ -109,6 +110,68 @@ bot.command('me', async (ctx) => {
     `• Всего тренировок: ${stats.totalWorkouts}\n` +
     `• За неделю: ${stats.weeklyWorkouts}\n` +
     `• За месяц: ${stats.monthlyWorkouts}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+// ==========================================
+// КОМАНДЫ БАЛАНСА И ОПЛАТЫ
+// ==========================================
+
+// Команда пополнения баланса
+bot.command('deposit', async (ctx) => {
+  const telegramId = ctx.from.id;
+  const args = ctx.message.text.split(' ');
+  const amount = parseFloat(args[1]);
+
+  if (!amount || amount < 1) {
+    await ctx.reply(
+      '💰 <b>Пополнение баланса</b>\n\n' +
+      'Используй: /deposit [сумма]\n' +
+      'Пример: /deposit 10\n\n' +
+      'Минимальная сумма: 1 USDT',
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  try {
+    const invoice = await createDepositInvoice(telegramId, amount);
+
+    await ctx.reply(
+      `💳 <b>Оплата ${amount} USDT</b>\n\n` +
+      `Нажми кнопку ниже чтобы оплатить через CryptoBot:`,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('💎 Оплатить в CryptoBot', invoice.payUrl)]
+        ])
+      }
+    );
+  } catch (error) {
+    console.error('Deposit error:', error);
+    await ctx.reply('❌ Ошибка создания платежа: ' + error.message);
+  }
+});
+
+// Команда проверки баланса
+bot.command('balance', async (ctx) => {
+  const telegramId = ctx.from.id;
+  let user = getUser(telegramId);
+
+  if (!user) {
+    user = createUser(telegramId, {
+      username: ctx.from.username || '',
+      first_name: ctx.from.first_name || '',
+      last_name: ctx.from.last_name || '',
+    });
+  }
+
+  const balance = user.balance || 0;
+
+  await ctx.reply(
+    `💰 <b>Твой баланс:</b> ${balance} ⭐\n\n` +
+    `Для пополнения используй /deposit [сумма]`,
     { parse_mode: 'HTML' }
   );
 });
