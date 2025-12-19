@@ -188,8 +188,10 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Вывод доступен только тренерам' });
     }
 
-    const { amount, asset = 'USDT' } = req.body;
-    const userId = req.user.telegramId;
+    const { amount, asset = 'USDT', targetUserId } = req.body;
+    // Если указан targetUserId — это модератор одобряет заявку тренера
+    // Если нет — модератор выводит на себя
+    const recipientId = targetUserId || req.user.telegramId;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Укажите сумму для вывода' });
@@ -199,10 +201,10 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
     const { withdrawToTrainer } = await import('../cryptoBot.js');
 
     const result = await withdrawToTrainer(
-      userId,
+      recipientId,
       asset,
       amount,
-      'Вывод средств FitMarket'
+      targetUserId ? `Вывод средств тренеру ID:${recipientId}` : 'Вывод средств FitMarket'
     );
 
     res.json({
