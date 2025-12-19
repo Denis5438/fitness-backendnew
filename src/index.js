@@ -1,0 +1,98 @@
+import express from 'express';
+import cors from 'cors';
+import { config } from './config.js';
+import { startBot } from './bot.js';
+import apiRouter from './routes/api.js';
+import { initCryptoPay } from './cryptoBot.js';
+import cryptoRouter from './routes/crypto.js';
+import { initDatabase } from './database/db.js';
+
+const app = express();
+
+// Middleware
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://fitmarket-tg-webapp.netlify.app',
+    'https://fitness-webapp-tg.netlify.app',
+    config.telegram.webappUrl,
+  ],
+  credentials: true,
+}));
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  },
+}));
+
+// Логирование запросов
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
+
+// API Routes
+app.use('/api', apiRouter);
+app.use('/api/crypto', cryptoRouter);
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    name: 'FitMarket API',
+    version: '2.0.0',
+    status: 'running',
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Запуск сервера
+async function start() {
+  try {
+    // Инициализация базы данных SQLite
+    initDatabase();
+
+    // Инициализация CryptoBot
+    initCryptoPay(config.cryptoBot?.token);
+
+    // Запуск HTTP сервера
+    app.listen(config.port, () => {
+      console.log(`✅ Server running on http://localhost:${config.port}`);
+      console.log(`📊 Environment: ${config.nodeEnv}`);
+    });
+
+    // Запуск Telegram бота
+    if (config.telegram.botToken) {
+      await startBot();
+    } else {
+      console.warn('⚠️ TELEGRAM_BOT_TOKEN не задан - Telegram bot не запущен (API работает)');
+    }
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Shutting down...');
+  process.exit(0);
+});
+
+start();

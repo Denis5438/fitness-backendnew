@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: fitmarket-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: WEBAPP_URL
+        value: https://fitmarket-tg-webapp.netlify.app
+      - key: CORS_ORIGINS
+        value: https://fitmarket-tg-webapp.netlify.app
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_TELEGRAM_ID
+        sync: false
+      - key: CRYPTO_BOT_TOKEN
+        sync: false

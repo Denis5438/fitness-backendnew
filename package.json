@@ -1,0 +1,31 @@
+{
+  "name": "telegram-fitness-backend",
+  "version": "1.0.0",
+  "description": "Backend для Telegram Fitness Web App",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "telegram",
+    "fitness",
+    "webapp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "concurrently": "^8.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "openai": "^4.24.1",
+    "sql.js": "^1.13.0",
+    "telegraf": "^4.16.3",
+    "zod": "^3.22.4"
+  }
+}
