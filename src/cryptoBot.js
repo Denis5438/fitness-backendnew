@@ -23,7 +23,8 @@ class CryptoPayAPI {
 
     if (!data.ok) {
       console.error('❌ CryptoBot API error:', JSON.stringify(data, null, 2));
-      throw new Error(data.error?.message || data.error?.code || 'CryptoBot API error');
+      const errorMessage = data.error?.name || data.error?.message || `Error ${data.error?.code}` || 'Unknown CryptoBot error';
+      throw new Error(`${errorMessage} (${data.error?.rating || ''} ${data.error?.description || ''})`);
     }
 
     return data.result;
