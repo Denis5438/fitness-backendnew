@@ -5,6 +5,7 @@ import { startBot } from './bot.js';
 import apiRouter from './routes/api.js';
 import { initCryptoPay } from './cryptoBot.js';
 import cryptoRouter from './routes/crypto.js';
+import contentRouter from './routes/content.js';
 import { initDatabase } from './database/db.js';
 
 const app = express();
@@ -16,6 +17,8 @@ app.use(cors({
     'http://localhost:5174',
     'https://fitmarket-tg-webapp.netlify.app',
     'https://fitness-webapp-tg.netlify.app',
+    'https://frontend-new-mu-seven.vercel.app',
+    /\.vercel\.app$/,
     config.telegram.webappUrl,
   ],
   credentials: true,
@@ -35,6 +38,7 @@ app.use((req, res, next) => {
 // API Routes
 app.use('/api', apiRouter);
 app.use('/api/crypto', cryptoRouter);
+app.use('/api/content', contentRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -84,6 +84,17 @@ CREATE TABLE IF NOT EXISTS ai_messages (
     FOREIGN KEY (user_id) REFERENCES users(telegram_id)
 );
 
+-- Новости от модераторов
+CREATE TABLE IF NOT EXISTS news (
+    id TEXT PRIMARY KEY,
+    author_id INTEGER NOT NULL,
+    author_name TEXT DEFAULT '',
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (author_id) REFERENCES users(telegram_id)
+);
+
 -- Индексы для ускорения запросов
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_trainer_requests_status ON trainer_requests(status);
@@ -92,3 +103,4 @@ CREATE INDEX IF NOT EXISTS idx_programs_published ON programs(is_published);
 CREATE INDEX IF NOT EXISTS idx_workout_logs_user ON workout_logs(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_user ON ai_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_news_created ON news(created_at);
