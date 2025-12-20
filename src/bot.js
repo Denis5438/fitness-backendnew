@@ -36,6 +36,12 @@ bot.command('start', async (ctx) => {
     });
   }
 
+  // Автоматически назначаем ADMIN роль для админа
+  if (isAdmin(telegramId) && user.role !== 'ADMIN') {
+    setUserRole(telegramId, 'ADMIN');
+    user = getUser(telegramId);
+  }
+
   await ctx.reply(
     `👋 Привет, ${firstName}!\n\n` +
     `💪 Добро пожаловать в <b>FitMarket</b>!\n\n` +
