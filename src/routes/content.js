@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDb } from '../database/index.js';
+import { getDatabase } from '../database/db.js';
 import { authMiddleware } from './api.js';
 
 const router = Router();
@@ -9,7 +9,7 @@ const router = Router();
 // Получить все новости (публичный доступ)
 router.get('/news', async (req, res) => {
     try {
-        const db = getDb();
+        const db = getDatabase();
         const news = db.prepare(`
       SELECT id, author_id, author_name, title, content, created_at 
       FROM news 
@@ -36,7 +36,7 @@ router.post('/news', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Заполните заголовок и текст' });
         }
 
-        const db = getDb();
+        const db = getDatabase();
         const id = `news_${Date.now()}`;
         const authorName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
 
@@ -65,7 +65,7 @@ router.put('/news/:id', authMiddleware, async (req, res) => {
         const { title, content } = req.body;
         const { id } = req.params;
 
-        const db = getDb();
+        const db = getDatabase();
         db.prepare(`UPDATE news SET title = ?, content = ? WHERE id = ?`).run(title, content, id);
 
         res.json({ success: true });
@@ -83,7 +83,7 @@ router.delete('/news/:id', authMiddleware, async (req, res) => {
         }
 
         const { id } = req.params;
-        const db = getDb();
+        const db = getDatabase();
         db.prepare(`DELETE FROM news WHERE id = ?`).run(id);
 
         res.json({ success: true });
@@ -98,7 +98,7 @@ router.delete('/news/:id', authMiddleware, async (req, res) => {
 // Получить все опубликованные программы (публичный доступ)
 router.get('/programs', async (req, res) => {
     try {
-        const db = getDb();
+        const db = getDatabase();
         const programs = db.prepare(`
       SELECT p.*, u.first_name || ' ' || COALESCE(u.last_name, '') as author_name
       FROM programs p
@@ -124,7 +124,7 @@ router.get('/programs', async (req, res) => {
 // Получить программы тренера (только свои)
 router.get('/programs/my', authMiddleware, async (req, res) => {
     try {
-        const db = getDb();
+        const db = getDatabase();
         const programs = db.prepare(`
       SELECT * FROM programs WHERE author_id = ? ORDER BY created_at DESC
     `).all(req.user.telegramId);
@@ -153,7 +153,7 @@ router.post('/programs', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Укажите название программы' });
         }
 
-        const db = getDb();
+        const db = getDatabase();
         const id = `prog_${Date.now()}`;
 
         db.prepare(`
@@ -190,7 +190,7 @@ router.put('/programs/:id', authMiddleware, async (req, res) => {
         const { id } = req.params;
         const { title, description, category, price, exercises } = req.body;
 
-        const db = getDb();
+        const db = getDatabase();
 
         // Проверяем что программа принадлежит пользователю
         const program = db.prepare(`SELECT author_id FROM programs WHERE id = ?`).get(id);
@@ -218,7 +218,7 @@ router.put('/programs/:id', authMiddleware, async (req, res) => {
 router.delete('/programs/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        const db = getDb();
+        const db = getDatabase();
 
         const program = db.prepare(`SELECT author_id FROM programs WHERE id = ?`).get(id);
         if (!program) {
