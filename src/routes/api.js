@@ -140,6 +140,13 @@ function authMiddleware(req, res, next) {
     });
   }
 
+  // FORCE ADMIN ROLE: Если ID совпадает с конфигом, но роль не ADMIN — обновляем
+  if (config.adminTelegramId && user.telegram_id === config.adminTelegramId && user.role !== 'ADMIN') {
+    console.log(`👑 Auto-promoting user ${user.telegram_id} to ADMIN`);
+    setUserRole(user.telegram_id, 'ADMIN');
+    user.role = 'ADMIN'; // Обновляем объект в памяти
+  }
+
   req.telegramUser = telegramUser;
   req.user = user;
   next();
