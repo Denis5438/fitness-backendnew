@@ -97,7 +97,7 @@ function parseInitData(initDataString) {
   }
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const initData = req.headers['x-telegram-init-data'];
 
   if (!initData) {
@@ -130,27 +130,32 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Invalid init data' });
   }
 
-  // Получаем или создаём пользователя
-  let user = getUser(telegramUser.id);
-  if (!user) {
-    user = createUser(telegramUser.id, {
-      username: telegramUser.username || '',
-      first_name: telegramUser.first_name || '',
-      last_name: telegramUser.last_name || '',
-    });
-  }
+  try {
+    // Получаем или создаём пользователя (async MongoDB)
+    let user = await getUser(telegramUser.id);
+    if (!user) {
+      user = await createUser(telegramUser.id, {
+        username: telegramUser.username || '',
+        first_name: telegramUser.first_name || '',
+        last_name: telegramUser.last_name || '',
+      });
+    }
 
-  // FORCE ADMIN ROLE: Если ID совпадает с конфигом, но роль не ADMIN — обновляем
-  console.log('🔍 Auth check:', { userId: user.telegramId, adminId: config.adminTelegramId, userRole: user.role });
-  if (config.adminTelegramId && user.telegramId === config.adminTelegramId && user.role !== 'ADMIN') {
-    console.log(`👑 Auto-promoting user ${user.telegramId} to ADMIN`);
-    setUserRole(user.telegramId, 'ADMIN');
-    user.role = 'ADMIN'; // Обновляем объект в памяти
-  }
+    // FORCE ADMIN ROLE: Если ID совпадает с конфигом, но роль не ADMIN — обновляем
+    console.log('🔍 Auth check:', { userId: user.telegramId, adminId: config.adminTelegramId, userRole: user.role });
+    if (config.adminTelegramId && user.telegramId === config.adminTelegramId && user.role !== 'ADMIN') {
+      console.log(`👑 Auto-promoting user ${user.telegramId} to ADMIN`);
+      await setUserRole(user.telegramId, 'ADMIN');
+      user.role = 'ADMIN'; // Обновляем объект в памяти
+    }
 
-  req.telegramUser = telegramUser;
-  req.user = user;
-  next();
+    req.telegramUser = telegramUser;
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error('❌ Auth middleware error:', error);
+    return res.status(500).json({ error: 'Database error' });
+  }
 }
 
 // Экспортируем authMiddleware для использования в других роутах
@@ -177,28 +182,38 @@ function requireTrainer(req, res, next) {
 // ==========================================
 
 // GET /api/user/me - Получить текущего пользователя
-router.get('/user/me', authMiddleware, (req, res) => {
-  const stats = getWorkoutStats(req.user.telegramId);
+router.get('/user/me', authMiddleware, async (req, res) => {
+  try {
+    const stats = await getWorkoutStats(req.user.telegramId);
 
-  res.json({
-    success: true,
-    user: {
-      ...req.user,
-      stats,
-    },
-  });
+    res.json({
+      success: true,
+      user: {
+        ...req.user,
+        stats,
+      },
+    });
+  } catch (error) {
+    console.error('Error getting user:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // POST /api/user/update - Обновить профиль
-router.post('/user/update', authMiddleware, (req, res) => {
-  const { firstName, lastName } = req.body;
+router.post('/user/update', authMiddleware, async (req, res) => {
+  try {
+    const { firstName, lastName } = req.body;
 
-  const updated = updateUser(req.user.telegramId, {
-    firstName: firstName || req.user.firstName,
-    lastName: lastName || req.user.lastName,
-  });
+    const updated = await updateUser(req.user.telegramId, {
+      firstName: firstName || req.user.firstName,
+      lastName: lastName || req.user.lastName,
+    });
 
-  res.json({ success: true, user: updated });
+    res.json({ success: true, user: updated });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ==========================================

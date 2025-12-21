@@ -6,7 +6,6 @@ import apiRouter from './routes/api.js';
 import { initCryptoPay } from './cryptoBot.js';
 import cryptoRouter from './routes/crypto.js';
 import contentRouter from './routes/content.js';
-import { initDatabase } from './database/db.js';
 
 const app = express();
 
@@ -63,8 +62,9 @@ app.use((err, req, res, next) => {
 // Запуск сервера
 async function start() {
   try {
-    // Инициализация базы данных SQLite
-    initDatabase();
+    // Подключение к MongoDB
+    const { connectMongoDB } = await import('./database/mongodb.js');
+    await connectMongoDB();
 
     // Инициализация CryptoBot
     initCryptoPay(config.cryptoBot?.token);

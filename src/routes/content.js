@@ -1,6 +1,35 @@
+// Content Routes - MongoDB Version
 import { Router } from 'express';
-import { getDatabase } from '../database/db.js';
 import { authMiddleware } from './api.js';
+import {
+    News,
+    Program,
+    TrainerRequest,
+    SupportMessage,
+    User
+} from '../database/models.js';
+import {
+    createNews,
+    getAllNews,
+    deleteNews,
+    createProgram,
+    getProgram,
+    updateProgram,
+    deleteProgram,
+    getPublishedPrograms,
+    getTrainerPrograms,
+    createTrainerRequest,
+    getLastTrainerRequest,
+    getPendingTrainerRequests,
+    approveTrainerRequest,
+    rejectTrainerRequest,
+    setUserRole,
+    getUser,
+    createSupportMessage,
+    getSupportMessages,
+    getUserSupportMessages,
+    getUniqueSupportUsers,
+} from '../database/users.js';
 
 const router = Router();
 
@@ -9,14 +38,16 @@ const router = Router();
 // Получить все новости (публичный доступ)
 router.get('/news', async (req, res) => {
     try {
-        const db = getDatabase();
-        const news = db.prepare(`
-      SELECT id, author_id, author_name, title, content, created_at 
-      FROM news 
-      ORDER BY created_at DESC 
-      LIMIT 50
-    `).all();
-        res.json(news);
+        const news = await getAllNews();
+        // Convert to expected format
+        res.json(news.map(n => ({
+            id: n.id,
+            author_id: n.authorId,
+            author_name: n.authorName,
+            title: n.title,
+            content: n.content,
+            created_at: n.createdAt,
+        })));
     } catch (error) {
         console.error('❌ Ошибка получения новостей:', error);
         res.status(500).json({ error: error.message });
@@ -26,7 +57,6 @@ router.get('/news', async (req, res) => {
 // Создать новость (только модераторы)
 router.post('/news', authMiddleware, async (req, res) => {
     try {
-        // Проверяем роль
         if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
@@ -36,18 +66,19 @@ router.post('/news', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Заполните заголовок и текст' });
         }
 
-        const db = getDatabase();
-        const id = `news_${Date.now()}`;
-        const authorName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
-
-        db.prepare(`
-      INSERT INTO news (id, author_id, author_name, title, content) 
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, req.user.telegramId, authorName, title, content);
+        const authorName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Модератор';
+        const result = await createNews(req.user.telegramId, authorName, title, content);
 
         res.json({
             success: true,
-            news: { id, author_id: req.user.telegramId, author_name: authorName, title, content, created_at: new Date().toISOString() }
+            news: {
+                id: result.id,
+                author_id: req.user.telegramId,
+                author_name: authorName,
+                title,
+                content,
+                created_at: new Date().toISOString(),
+            },
         });
     } catch (error) {
         console.error('❌ Ошибка создания новости:', error);
@@ -55,88 +86,45 @@ router.post('/news', authMiddleware, async (req, res) => {
     }
 });
 
-// Обновить новость (только модераторы)
-router.put('/news/:id', authMiddleware, async (req, res) => {
-    try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Доступ запрещён' });
-        }
-
-        const { title, content } = req.body;
-        const { id } = req.params;
-
-        const db = getDatabase();
-        db.prepare(`UPDATE news SET title = ?, content = ? WHERE id = ?`).run(title, content, id);
-
-        res.json({ success: true });
-    } catch (error) {
-        console.error('❌ Ошибка обновления новости:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Удалить новость (только модераторы)
+// Удалить новость
 router.delete('/news/:id', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const { id } = req.params;
-        const db = getDatabase();
-        db.prepare(`DELETE FROM news WHERE id = ?`).run(id);
-
-        res.json({ success: true });
+        const success = await deleteNews(req.params.id);
+        res.json({ success });
     } catch (error) {
         console.error('❌ Ошибка удаления новости:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// ==================== ПРОГРАММЫ ТРЕНЕРОВ ====================
+// ==================== ПРОГРАММЫ ====================
 
-// Получить все опубликованные программы (публичный доступ)
+// Получить все программы (публичные)
 router.get('/programs', async (req, res) => {
     try {
-        const db = getDatabase();
-        const programs = db.prepare(`
-      SELECT p.*, u.first_name || ' ' || COALESCE(u.last_name, '') as author_name
-      FROM programs p
-      LEFT JOIN users u ON p.author_id = u.telegram_id
-      WHERE p.is_published = 1
-      ORDER BY p.created_at DESC
-    `).all();
-
-        // Парсим workouts из JSON
-        const result = programs.map(p => ({
-            ...p,
-            exercises: JSON.parse(p.workouts || '[]'),
-            author: p.author_name?.trim() || 'Неизвестный'
-        }));
-
-        res.json(result);
+        const programs = await getPublishedPrograms();
+        // Convert to expected format
+        res.json(programs.map(p => ({
+            id: p.id,
+            author_id: p.authorId,
+            author_name: p.authorName,
+            title: p.title,
+            description: p.description,
+            category: p.category,
+            difficulty: p.difficulty,
+            duration_weeks: p.durationWeeks,
+            price: p.price,
+            is_published: p.isPublished ? 1 : 0,
+            workouts: p.workouts,
+            purchase_count: p.purchaseCount,
+            created_at: p.createdAt,
+        })));
     } catch (error) {
         console.error('❌ Ошибка получения программ:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Получить программы тренера (только свои)
-router.get('/programs/my', authMiddleware, async (req, res) => {
-    try {
-        const db = getDatabase();
-        const programs = db.prepare(`
-      SELECT * FROM programs WHERE author_id = ? ORDER BY created_at DESC
-    `).all(req.user.telegramId);
-
-        const result = programs.map(p => ({
-            ...p,
-            exercises: JSON.parse(p.workouts || '[]')
-        }));
-
-        res.json(result);
-    } catch (error) {
-        console.error('❌ Ошибка получения программ тренера:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -144,92 +132,64 @@ router.get('/programs/my', authMiddleware, async (req, res) => {
 // Создать программу (только тренеры)
 router.post('/programs', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'TRAINER' && req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Только тренеры могут создавать программы' });
+        if (!['TRAINER', 'MODERATOR', 'ADMIN'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Доступ запрещён. Нужна роль тренера.' });
         }
 
-        const { title, description, category, price, exercises } = req.body;
-        if (!title) {
-            return res.status(400).json({ error: 'Укажите название программы' });
-        }
+        const { title, description, category, difficulty, price, workouts, isPublished } = req.body;
 
-        const db = getDatabase();
-        const id = `prog_${Date.now()}`;
-
-        db.prepare(`
-      INSERT INTO programs (id, author_id, title, description, category, price, workouts, is_published) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(id, req.user.telegramId, title, description || '', category || 'general', price || 0, JSON.stringify(exercises || []));
-
-        const authorName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
-
-        res.json({
-            success: true,
-            program: {
-                id,
-                author_id: req.user.telegramId,
-                author: authorName,
-                title,
-                description,
-                category,
-                price: price || 0,
-                exercises: exercises || [],
-                is_published: 1,
-                created_at: new Date().toISOString()
-            }
+        const program = await createProgram(req.user.telegramId, {
+            title,
+            description,
+            category,
+            difficulty,
+            price: price || 0,
+            workouts: workouts || [],
+            isPublished: isPublished || false,
         });
+
+        res.json({ success: true, program });
     } catch (error) {
         console.error('❌ Ошибка создания программы:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Обновить программу (только автор)
+// Обновить программу
 router.put('/programs/:id', authMiddleware, async (req, res) => {
     try {
-        const { id } = req.params;
-        const { title, description, category, price, exercises } = req.body;
-
-        const db = getDatabase();
-
-        // Проверяем что программа принадлежит пользователю
-        const program = db.prepare(`SELECT author_id FROM programs WHERE id = ?`).get(id);
+        const program = await getProgram(req.params.id);
         if (!program) {
             return res.status(404).json({ error: 'Программа не найдена' });
         }
-        if (program.author_id !== req.user.telegramId && req.user.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Нет доступа к редактированию' });
+
+        // Проверяем права
+        if (program.authorId !== req.user.telegramId && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Нельзя редактировать чужую программу' });
         }
 
-        db.prepare(`
-      UPDATE programs 
-      SET title = ?, description = ?, category = ?, price = ?, workouts = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(title, description || '', category || 'general', price || 0, JSON.stringify(exercises || []), id);
-
-        res.json({ success: true });
+        const updated = await updateProgram(req.params.id, req.body);
+        res.json({ success: true, program: updated });
     } catch (error) {
         console.error('❌ Ошибка обновления программы:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Удалить программу (только автор)
+// Удалить программу
 router.delete('/programs/:id', authMiddleware, async (req, res) => {
     try {
-        const { id } = req.params;
-        const db = getDatabase();
-
-        const program = db.prepare(`SELECT author_id FROM programs WHERE id = ?`).get(id);
+        const program = await getProgram(req.params.id);
         if (!program) {
             return res.status(404).json({ error: 'Программа не найдена' });
         }
-        if (program.author_id !== req.user.telegramId && req.user.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Нет доступа к удалению' });
+
+        if (program.authorId !== req.user.telegramId && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Нельзя удалить чужую программу' });
         }
 
-        db.prepare(`DELETE FROM programs WHERE id = ?`).run(id);
-        res.json({ success: true });
+        const success = await deleteProgram(req.params.id);
+        res.json({ success });
     } catch (error) {
         console.error('❌ Ошибка удаления программы:', error);
         res.status(500).json({ error: error.message });
@@ -238,22 +198,14 @@ router.delete('/programs/:id', authMiddleware, async (req, res) => {
 
 // ==================== ЗАЯВКИ НА ТРЕНЕРА ====================
 
-// Получить все заявки (только для модераторов и админов)
+// Получить все заявки (для модераторов)
 router.get('/trainer-requests', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const db = getDatabase();
-        const requests = db.prepare(`
-            SELECT tr.*, u.username, u.first_name, u.last_name
-            FROM trainer_requests tr
-            LEFT JOIN users u ON tr.telegram_id = u.telegram_id
-            WHERE tr.status = 'PENDING'
-            ORDER BY tr.created_at DESC
-        `).all();
-
+        const requests = await getPendingTrainerRequests();
         res.json(requests);
     } catch (error) {
         console.error('❌ Ошибка получения заявок:', error);
@@ -261,26 +213,23 @@ router.get('/trainer-requests', authMiddleware, async (req, res) => {
     }
 });
 
-// Отправить заявку на тренера
+// Подать заявку на тренера
 router.post('/trainer-requests', authMiddleware, async (req, res) => {
     try {
-        const db = getDatabase();
-
         // Проверяем нет ли уже заявки
-        const existing = db.prepare(`SELECT id FROM trainer_requests WHERE telegram_id = ? AND status = 'PENDING'`).get(req.user.telegramId);
-        if (existing) {
-            return res.status(400).json({ error: 'Заявка уже отправлена' });
+        const existing = await getLastTrainerRequest(req.user.telegramId);
+        if (existing && existing.status === 'PENDING') {
+            return res.status(400).json({ error: 'У вас уже есть активная заявка' });
         }
 
-        const id = `req_${Date.now()}`;
         const { bio, experience, specialization } = req.body;
+        const result = await createTrainerRequest(req.user.telegramId, {
+            bio,
+            experience,
+            specialization,
+        });
 
-        db.prepare(`
-            INSERT INTO trainer_requests (id, telegram_id, bio, experience, specialization)
-            VALUES (?, ?, ?, ?, ?)
-        `).run(id, req.user.telegramId, bio || '', experience || '', specialization || '');
-
-        res.json({ success: true, requestId: id });
+        res.json({ success: true, request: result });
     } catch (error) {
         console.error('❌ Ошибка создания заявки:', error);
         res.status(500).json({ error: error.message });
@@ -294,25 +243,12 @@ router.post('/trainer-requests/:id/approve', authMiddleware, async (req, res) =>
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const { id } = req.params;
-        const db = getDatabase();
-
-        const request = db.prepare(`SELECT * FROM trainer_requests WHERE id = ?`).get(id);
-        if (!request) {
+        const result = await approveTrainerRequest(req.params.id, req.user.telegramId);
+        if (!result) {
             return res.status(404).json({ error: 'Заявка не найдена' });
         }
 
-        // Обновляем статус заявки
-        db.prepare(`
-            UPDATE trainer_requests 
-            SET status = 'APPROVED', reviewed_by = ?, reviewed_at = datetime('now')
-            WHERE id = ?
-        `).run(req.user.telegramId, id);
-
-        // Повышаем роль пользователя до тренера
-        db.prepare(`UPDATE users SET role = 'TRAINER' WHERE telegram_id = ?`).run(request.telegram_id);
-
-        res.json({ success: true });
+        res.json({ success: true, request: result });
     } catch (error) {
         console.error('❌ Ошибка одобрения заявки:', error);
         res.status(500).json({ error: error.message });
@@ -326,24 +262,17 @@ router.post('/trainer-requests/:id/reject', authMiddleware, async (req, res) => 
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const { id } = req.params;
         const { reason } = req.body;
-        const db = getDatabase();
+        const result = await rejectTrainerRequest(req.params.id, req.user.telegramId, reason);
 
-        db.prepare(`
-            UPDATE trainer_requests 
-            SET status = 'REJECTED', reviewed_by = ?, reviewed_at = datetime('now'), rejection_reason = ?
-            WHERE id = ?
-        `).run(req.user.telegramId, reason || '', id);
-
-        res.json({ success: true });
+        res.json({ success: true, request: result });
     } catch (error) {
         console.error('❌ Ошибка отклонения заявки:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// ==================== ЧАТ ТЕХПОДДЕРЖКИ ====================
+// ==================== ЧАТ ПОДДЕРЖКИ ====================
 
 // Получить все сообщения (для модераторов)
 router.get('/support/messages', authMiddleware, async (req, res) => {
@@ -352,12 +281,7 @@ router.get('/support/messages', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const db = getDatabase();
-        const messages = db.prepare(`
-            SELECT * FROM support_messages 
-            ORDER BY created_at ASC
-        `).all();
-
+        const messages = await getSupportMessages();
         res.json(messages);
     } catch (error) {
         console.error('❌ Ошибка получения сообщений:', error);
@@ -365,23 +289,14 @@ router.get('/support/messages', authMiddleware, async (req, res) => {
     }
 });
 
-// Получить уникальных пользователей чата (для модераторов)
+// Получить список пользователей с чатами
 router.get('/support/users', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const db = getDatabase();
-        const users = db.prepare(`
-            SELECT DISTINCT from_user_id as id, from_user_name as name, from_username as username,
-                   MAX(created_at) as last_message_at
-            FROM support_messages 
-            WHERE from_user_id != 0
-            GROUP BY from_user_id
-            ORDER BY last_message_at DESC
-        `).all();
-
+        const users = await getUniqueSupportUsers();
         res.json(users);
     } catch (error) {
         console.error('❌ Ошибка получения пользователей:', error);
@@ -389,25 +304,19 @@ router.get('/support/users', authMiddleware, async (req, res) => {
     }
 });
 
-// Получить сообщения пользователя (для модераторов)
+// Получить сообщения конкретного пользователя
 router.get('/support/messages/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
-        const db = getDatabase();
 
-        // Если обычный пользователь - только свои сообщения
+        // Пользователь может видеть только свои сообщения
         if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
             if (parseInt(userId) !== req.user.telegramId) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
         }
 
-        const messages = db.prepare(`
-            SELECT * FROM support_messages 
-            WHERE from_user_id = ? OR to_user_id = ?
-            ORDER BY created_at ASC
-        `).all(userId, userId);
-
+        const messages = await getUserSupportMessages(userId);
         res.json(messages);
     } catch (error) {
         console.error('❌ Ошибка получения сообщений:', error);
@@ -423,25 +332,25 @@ router.post('/support/messages', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Сообщение не может быть пустым' });
         }
 
-        const db = getDatabase();
-        const id = `msg_${Date.now()}`;
         const userName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Пользователь';
-
-        db.prepare(`
-            INSERT INTO support_messages (id, from_user_id, from_user_name, from_username, to_user_id, message)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(id, req.user.telegramId, userName, req.user.username || '', 'support', message.trim());
+        const result = await createSupportMessage(
+            req.user.telegramId,
+            userName,
+            req.user.username || '',
+            'support',
+            message.trim()
+        );
 
         res.json({
             success: true,
             message: {
-                id,
+                id: result.id,
                 from_user_id: req.user.telegramId,
                 from_user_name: userName,
                 to_user_id: 'support',
                 message: message.trim(),
-                created_at: new Date().toISOString()
-            }
+                created_at: new Date().toISOString(),
+            },
         });
     } catch (error) {
         console.error('❌ Ошибка отправки сообщения:', error);
@@ -463,24 +372,18 @@ router.post('/support/reply/:userId', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Сообщение не может быть пустым' });
         }
 
-        const db = getDatabase();
-        const id = `msg_${Date.now()}`;
-
-        db.prepare(`
-            INSERT INTO support_messages (id, from_user_id, from_user_name, from_username, to_user_id, message)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(id, 0, 'Поддержка', 'support', userId, message.trim());
+        const result = await createSupportMessage(0, 'Поддержка', 'support', userId, message.trim());
 
         res.json({
             success: true,
             message: {
-                id,
+                id: result.id,
                 from_user_id: 0,
                 from_user_name: 'Поддержка',
                 to_user_id: userId,
                 message: message.trim(),
-                created_at: new Date().toISOString()
-            }
+                created_at: new Date().toISOString(),
+            },
         });
     } catch (error) {
         console.error('❌ Ошибка отправки ответа:', error);
@@ -490,7 +393,6 @@ router.post('/support/reply/:userId', authMiddleware, async (req, res) => {
 
 // ==================== СБРОС АККАУНТА ====================
 
-// Сбросить данные пользователя (только для админа)
 router.post('/reset-account/:userId', authMiddleware, async (req, res) => {
     console.log('🔄 Reset account called. User role:', req.user.role, 'Target userId:', req.params.userId);
     try {
@@ -500,27 +402,30 @@ router.post('/reset-account/:userId', authMiddleware, async (req, res) => {
         }
 
         const { userId } = req.params;
-        const db = getDatabase();
+        const numUserId = parseInt(userId);
 
         console.log('🗑️ Deleting data for user:', userId);
 
-        // Удаляем программы пользователя
-        const programs = db.prepare(`DELETE FROM programs WHERE author_id = ?`).run(userId);
-        console.log('  - Programs deleted:', programs.changes);
+        // Delete user programs
+        const programsResult = await Program.deleteMany({ author_id: numUserId });
+        console.log('  - Programs deleted:', programsResult.deletedCount);
 
-        // Удаляем историю тренировок
-        const workouts = db.prepare(`DELETE FROM workout_logs WHERE telegram_id = ?`).run(userId);
-        console.log('  - Workout logs deleted:', workouts.changes);
+        // Delete workout logs
+        const { WorkoutLog } = await import('../database/models.js');
+        const workoutsResult = await WorkoutLog.deleteMany({ telegram_id: numUserId });
+        console.log('  - Workout logs deleted:', workoutsResult.deletedCount);
 
-        // Удаляем покупки
-        const purchases = db.prepare(`DELETE FROM purchases WHERE telegram_id = ?`).run(userId);
-        console.log('  - Purchases deleted:', purchases.changes);
+        // Delete purchases
+        const { Purchase } = await import('../database/models.js');
+        const purchasesResult = await Purchase.deleteMany({ telegram_id: numUserId });
+        console.log('  - Purchases deleted:', purchasesResult.deletedCount);
 
-        // Удаляем AI сообщения
-        const aiMsgs = db.prepare(`DELETE FROM ai_messages WHERE user_id = ?`).run(userId);
-        console.log('  - AI messages deleted:', aiMsgs.changes);
+        // Delete AI messages
+        const { AIMessage } = await import('../database/models.js');
+        const aiResult = await AIMessage.deleteMany({ user_id: numUserId });
+        console.log('  - AI messages deleted:', aiResult.deletedCount);
 
-        // НЕ удаляем пользователя и его роль!
+        // Don't delete user and their role!
 
         console.log('✅ Account reset successful for user:', userId);
         res.json({ success: true, message: `Аккаунт ${userId} сброшен!` });
@@ -530,27 +435,30 @@ router.post('/reset-account/:userId', authMiddleware, async (req, res) => {
     }
 });
 
-
 // ==================== УПРАВЛЕНИЕ РОЛЯМИ ====================
 
-// Получить список пользователей с особыми ролями (модераторы и тренеры)
+// Получить список пользователей с особыми ролями
 router.get('/roles', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const db = getDatabase();
-        // Получаем всех кроме обычных юзеров, но исключаем самого админа из списка если нужно (или оставляем)
-        // Обычно админ хочет видеть и себя, или всех у кого есть права
-        const staff = db.prepare(`
-            SELECT telegram_id, first_name, last_name, username, role 
-            FROM users 
-            WHERE role IN ('MODERATOR', 'TRAINER', 'ADMIN')
-            ORDER BY role, created_at
-        `).all();
+        const staff = await User.find({
+            role: { $in: ['MODERATOR', 'TRAINER', 'ADMIN'] },
+        })
+            .sort({ role: 1, created_at: 1 })
+            .lean();
 
-        res.json(staff);
+        res.json(
+            staff.map((u) => ({
+                telegram_id: u.telegram_id,
+                first_name: u.first_name,
+                last_name: u.last_name,
+                username: u.username,
+                role: u.role,
+            }))
+        );
     } catch (error) {
         console.error('❌ Ошибка получения ролей:', error);
         res.status(500).json({ error: error.message });
@@ -570,22 +478,16 @@ router.post('/roles/assign', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Некорректные данные' });
         }
 
-        const db = getDatabase();
-
-        // Проверяем существует ли пользователь. Если нет - создаем заглушку или ошибку?
-        // Лучше проверить.
-        let user = db.prepare(`SELECT telegram_id FROM users WHERE telegram_id = ?`).get(telegramId);
-
+        // Check if user exists, create if not
+        let user = await getUser(telegramId);
         if (!user) {
-            // Если пользователя нет в базе (например, ни разу не заходил), мы можем его создать предварительно?
-            // Или требовать чтобы он сначала зашел.
-            // Для упрощения, предположим что мы просто обновляем. Если нет - создадим минимальную запись.
-            db.prepare(`
-                INSERT INTO users (telegram_id, role) VALUES (?, ?)
-                ON CONFLICT(telegram_id) DO UPDATE SET role = ?
-            `).run(telegramId, role, role);
+            // Create minimal user record
+            await User.create({
+                telegram_id: telegramId,
+                role: role,
+            });
         } else {
-            db.prepare(`UPDATE users SET role = ? WHERE telegram_id = ?`).run(role, telegramId);
+            await setUserRole(telegramId, role);
         }
 
         res.json({ success: true, message: `Роль ${role} назначена пользователю ${telegramId}` });
@@ -608,13 +510,7 @@ router.post('/roles/remove', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: 'Не указан ID пользователя' });
         }
 
-        // Нельзя снять роль с самого себя (если админ) - хотя тут проверка на ADMIN сверху, 
-        // админ может себя разжаловать? Лучше запретить удаление главного админа.
-        // Предположим главный админ это тот кто в конфиге или первый.
-        // В данном случае просто обновим.
-
-        const db = getDatabase();
-        db.prepare(`UPDATE users SET role = 'USER' WHERE telegram_id = ?`).run(telegramId);
+        await setUserRole(telegramId, 'USER');
 
         res.json({ success: true, message: `Роль снята с пользователя ${telegramId}` });
     } catch (error) {
@@ -624,4 +520,3 @@ router.post('/roles/remove', authMiddleware, async (req, res) => {
 });
 
 export default router;
-

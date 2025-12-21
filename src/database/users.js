@@ -1,17 +1,25 @@
-// Хранилище пользователей с ролями - SQLite версия
-// Роли: USER, TRAINER, MODERATOR
+// MongoDB Database Layer for FitMarket
+// Replaces SQLite users.js
 
-import { getDatabase } from './db.js';
+import {
+  User,
+  TrainerRequest,
+  Program,
+  WorkoutLog,
+  Purchase,
+  AIMessage,
+  News,
+  SupportMessage
+} from './models.js';
 
 // ==========================================
-// ПОЛЬЗОВАТЕЛИ
+// USERS
 // ==========================================
 
-export function getUser(telegramId) {
-  const db = getDatabase();
-  const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(telegramId);
+export async function getUser(telegramId) {
+  const user = await User.findOne({ telegram_id: telegramId }).lean();
   if (!user) return null;
-  
+
   return {
     telegramId: user.telegram_id,
     username: user.username,
@@ -25,65 +33,48 @@ export function getUser(telegramId) {
   };
 }
 
-export function createUser(telegramId, userData) {
-  const db = getDatabase();
-  
-  // Проверяем, существует ли уже
-  const existing = getUser(telegramId);
+export async function createUser(telegramId, userData) {
+  // Check if exists
+  const existing = await getUser(telegramId);
   if (existing) return existing;
-  
-  db.prepare(`
-    INSERT INTO users (telegram_id, username, first_name, last_name, role)
-    VALUES (?, ?, ?, ?, 'USER')
-  `).run(
-    telegramId,
-    userData.username || userData.first_name || '',
-    userData.first_name || '',
-    userData.last_name || ''
-  );
-  
+
+  await User.create({
+    telegram_id: telegramId,
+    username: userData.username || userData.first_name || '',
+    first_name: userData.first_name || '',
+    last_name: userData.last_name || '',
+    role: 'USER',
+  });
+
   return getUser(telegramId);
 }
 
-export function updateUser(telegramId, updates) {
-  const db = getDatabase();
-  const user = getUser(telegramId);
+export async function updateUser(telegramId, updates) {
+  const user = await getUser(telegramId);
   if (!user) return null;
-  
-  const fields = [];
-  const values = [];
-  
-  if (updates.firstName !== undefined) {
-    fields.push('first_name = ?');
-    values.push(updates.firstName);
+
+  const updateObj = {};
+  if (updates.firstName !== undefined) updateObj.first_name = updates.firstName;
+  if (updates.lastName !== undefined) updateObj.last_name = updates.lastName;
+  if (updates.username !== undefined) updateObj.username = updates.username;
+
+  if (Object.keys(updateObj).length > 0) {
+    await User.updateOne({ telegram_id: telegramId }, { $set: updateObj });
   }
-  if (updates.lastName !== undefined) {
-    fields.push('last_name = ?');
-    values.push(updates.lastName);
-  }
-  if (updates.username !== undefined) {
-    fields.push('username = ?');
-    values.push(updates.username);
-  }
-  
-  if (fields.length > 0) {
-    fields.push("updated_at = datetime('now')");
-    values.push(telegramId);
-    db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE telegram_id = ?`).run(...values);
-  }
-  
+
   return getUser(telegramId);
 }
 
-export function setUserRole(telegramId, role) {
-  const db = getDatabase();
-  db.prepare(`UPDATE users SET role = ?, updated_at = datetime('now') WHERE telegram_id = ?`).run(role, telegramId);
+export async function setUserRole(telegramId, role) {
+  await User.updateOne(
+    { telegram_id: telegramId },
+    { $set: { role: role } }
+  );
   return getUser(telegramId);
 }
 
-export function getUsersByRole(role) {
-  const db = getDatabase();
-  const users = db.prepare('SELECT * FROM users WHERE role = ?').all(role);
+export async function getUsersByRole(role) {
+  const users = await User.find({ role: role }).lean();
   return users.map(u => ({
     telegramId: u.telegram_id,
     username: u.username,
@@ -93,12 +84,14 @@ export function getUsersByRole(role) {
   }));
 }
 
-export function findUserByUsername(username) {
-  const db = getDatabase();
+export async function findUserByUsername(username) {
   const cleanUsername = username.replace('@', '').toLowerCase();
-  const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(cleanUsername);
+  const user = await User.findOne({
+    username: { $regex: new RegExp(`^${cleanUsername}$`, 'i') }
+  }).lean();
+
   if (!user) return null;
-  
+
   return {
     telegramId: user.telegram_id,
     username: user.username,
@@ -108,154 +101,118 @@ export function findUserByUsername(username) {
   };
 }
 
-export function getAllUsers() {
-  const db = getDatabase();
-  const users = db.prepare('SELECT * FROM users').all();
-  return users.map(u => ({
-    telegramId: u.telegram_id,
-    username: u.username,
-    firstName: u.first_name,
-    lastName: u.last_name,
-    role: u.role,
-  }));
-}
-
 // ==========================================
-// ЗАЯВКИ НА ТРЕНЕРА
+// TRAINER REQUESTS
 // ==========================================
 
-export function createTrainerRequest(telegramId, data) {
-  const db = getDatabase();
-  const id = `req_${Date.now()}_${telegramId}`;
-  
-  db.prepare(`
-    INSERT INTO trainer_requests (id, telegram_id, bio, experience, specialization)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, telegramId, data.bio || '', data.experience || '', data.specialization || '');
-  
-  return getTrainerRequest(id);
-}
+export async function createTrainerRequest(telegramId, requestData) {
+  const id = `tr_${Date.now()}`;
 
-export function getTrainerRequest(requestId) {
-  const db = getDatabase();
-  const req = db.prepare('SELECT * FROM trainer_requests WHERE id = ?').get(requestId);
-  if (!req) return null;
-  
-  return {
-    id: req.id,
-    telegramId: req.telegram_id,
-    bio: req.bio,
-    experience: req.experience,
-    specialization: req.specialization,
-    status: req.status,
-    reviewedBy: req.reviewed_by,
-    reviewedAt: req.reviewed_at,
-    rejectionReason: req.rejection_reason,
-    createdAt: req.created_at,
-  };
-}
-
-export function getTrainerRequestByUser(telegramId) {
-  const db = getDatabase();
-  const req = db.prepare(`
-    SELECT * FROM trainer_requests 
-    WHERE telegram_id = ? AND status = 'PENDING'
-    ORDER BY created_at DESC LIMIT 1
-  `).get(telegramId);
-  
-  return req ? getTrainerRequest(req.id) : null;
-}
-
-export function getLastTrainerRequest(telegramId) {
-  const db = getDatabase();
-  const req = db.prepare(`
-    SELECT * FROM trainer_requests 
-    WHERE telegram_id = ?
-    ORDER BY created_at DESC LIMIT 1
-  `).get(telegramId);
-  
-  return req ? getTrainerRequest(req.id) : null;
-}
-
-export function getPendingTrainerRequests() {
-  const db = getDatabase();
-  const requests = db.prepare(`
-    SELECT * FROM trainer_requests 
-    WHERE status = 'PENDING'
-    ORDER BY created_at ASC
-  `).all();
-  
-  return requests.map(req => getTrainerRequest(req.id));
-}
-
-export function approveTrainerRequest(requestId, moderatorId) {
-  const db = getDatabase();
-  const request = getTrainerRequest(requestId);
-  if (!request) return null;
-  
-  db.prepare(`
-    UPDATE trainer_requests 
-    SET status = 'APPROVED', reviewed_by = ?, reviewed_at = datetime('now')
-    WHERE id = ?
-  `).run(moderatorId, requestId);
-  
-  // Обновляем роль пользователя
-  setUserRole(request.telegramId, 'TRAINER');
-  
-  return getTrainerRequest(requestId);
-}
-
-export function rejectTrainerRequest(requestId, moderatorId, reason) {
-  const db = getDatabase();
-  
-  db.prepare(`
-    UPDATE trainer_requests 
-    SET status = 'REJECTED', reviewed_by = ?, reviewed_at = datetime('now'), rejection_reason = ?
-    WHERE id = ?
-  `).run(moderatorId, reason || 'Причина не указана', requestId);
-  
-  return getTrainerRequest(requestId);
-}
-
-// ==========================================
-// ПРОГРАММЫ ТРЕНИРОВОК
-// ==========================================
-
-export function createProgram(authorId, data) {
-  const db = getDatabase();
-  const id = `prog_${Date.now()}_${authorId}`;
-  
-  db.prepare(`
-    INSERT INTO programs (id, author_id, title, description, category, difficulty, duration_weeks, price, is_personal, workouts)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  await TrainerRequest.create({
     id,
-    authorId,
-    data.title || 'Без названия',
-    data.description || '',
-    data.category || 'general',
-    data.difficulty || 'intermediate',
-    data.durationWeeks || 4,
-    data.price || 0,
-    data.isPersonal ? 1 : 0,
-    JSON.stringify(data.workouts || [])
+    telegram_id: telegramId,
+    bio: requestData.bio || '',
+    experience: requestData.experience || '',
+    specialization: requestData.specialization || '',
+    status: 'PENDING',
+  });
+
+  return { id, status: 'PENDING' };
+}
+
+export async function getTrainerRequestByUser(telegramId) {
+  return TrainerRequest.findOne({ telegram_id: telegramId }).lean();
+}
+
+export async function getLastTrainerRequest(telegramId) {
+  return TrainerRequest.findOne({ telegram_id: telegramId })
+    .sort({ created_at: -1 })
+    .lean();
+}
+
+export async function getPendingTrainerRequests() {
+  const requests = await TrainerRequest.find({ status: 'PENDING' })
+    .sort({ created_at: 1 })
+    .lean();
+
+  // Enrich with user data
+  const enriched = [];
+  for (const req of requests) {
+    const user = await getUser(req.telegram_id);
+    enriched.push({
+      ...req,
+      user: user || { telegramId: req.telegram_id, firstName: 'Unknown' },
+    });
+  }
+
+  return enriched;
+}
+
+export async function approveTrainerRequest(requestId, reviewerId) {
+  const request = await TrainerRequest.findOne({ id: requestId }).lean();
+  if (!request) return null;
+
+  await TrainerRequest.updateOne(
+    { id: requestId },
+    {
+      $set: {
+        status: 'APPROVED',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date()
+      }
+    }
   );
-  
+
+  // Update user role
+  await setUserRole(request.telegram_id, 'TRAINER');
+
+  return TrainerRequest.findOne({ id: requestId }).lean();
+}
+
+export async function rejectTrainerRequest(requestId, reviewerId, reason = '') {
+  await TrainerRequest.updateOne(
+    { id: requestId },
+    {
+      $set: {
+        status: 'REJECTED',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date(),
+        rejection_reason: reason,
+      }
+    }
+  );
+
+  return TrainerRequest.findOne({ id: requestId }).lean();
+}
+
+// ==========================================
+// PROGRAMS
+// ==========================================
+
+export async function createProgram(authorId, programData) {
+  const id = programData.id || `prog_${Date.now()}`;
+
+  await Program.create({
+    id,
+    author_id: authorId,
+    title: programData.title || 'Без названия',
+    description: programData.description || '',
+    category: programData.category || 'general',
+    difficulty: programData.difficulty || 'intermediate',
+    duration_weeks: programData.durationWeeks || 4,
+    price: programData.price || 0,
+    is_published: programData.isPublished || false,
+    is_personal: programData.isPersonal || false,
+    workouts: programData.workouts || [],
+  });
+
   return getProgram(id);
 }
 
-export function getProgram(programId) {
-  const db = getDatabase();
-  const prog = db.prepare('SELECT * FROM programs WHERE id = ?').get(programId);
+export async function getProgram(programId) {
+  const prog = await Program.findOne({ id: programId }).lean();
   if (!prog) return null;
-  
-  let workouts = [];
-  try {
-    workouts = JSON.parse(prog.workouts || '[]');
-  } catch (e) {
-    workouts = [];
-  }
-  
+
   return {
     id: prog.id,
     authorId: prog.author_id,
@@ -265,223 +222,336 @@ export function getProgram(programId) {
     difficulty: prog.difficulty,
     durationWeeks: prog.duration_weeks,
     price: prog.price,
-    isPublished: !!prog.is_published,
-    isPersonal: !!prog.is_personal,
-    workouts: workouts,
+    isPublished: prog.is_published,
+    isPersonal: prog.is_personal,
+    workouts: prog.workouts,
     purchaseCount: prog.purchase_count,
     createdAt: prog.created_at,
     updatedAt: prog.updated_at,
   };
 }
 
-export function updateProgram(programId, updates) {
-  const db = getDatabase();
-  const program = getProgram(programId);
-  if (!program) return null;
-  
-  const fields = [];
-  const values = [];
-  
-  if (updates.title !== undefined) { fields.push('title = ?'); values.push(updates.title); }
-  if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description); }
-  if (updates.category !== undefined) { fields.push('category = ?'); values.push(updates.category); }
-  if (updates.difficulty !== undefined) { fields.push('difficulty = ?'); values.push(updates.difficulty); }
-  if (updates.durationWeeks !== undefined) { fields.push('duration_weeks = ?'); values.push(updates.durationWeeks); }
-  if (updates.price !== undefined) { fields.push('price = ?'); values.push(updates.price); }
-  if (updates.isPublished !== undefined) { fields.push('is_published = ?'); values.push(updates.isPublished ? 1 : 0); }
-  if (updates.workouts !== undefined) { fields.push('workouts = ?'); values.push(JSON.stringify(updates.workouts)); }
-  
-  if (fields.length > 0) {
-    fields.push("updated_at = datetime('now')");
-    values.push(programId);
-    db.prepare(`UPDATE programs SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+export async function updateProgram(programId, updates) {
+  const updateObj = {};
+  if (updates.title !== undefined) updateObj.title = updates.title;
+  if (updates.description !== undefined) updateObj.description = updates.description;
+  if (updates.category !== undefined) updateObj.category = updates.category;
+  if (updates.difficulty !== undefined) updateObj.difficulty = updates.difficulty;
+  if (updates.durationWeeks !== undefined) updateObj.duration_weeks = updates.durationWeeks;
+  if (updates.price !== undefined) updateObj.price = updates.price;
+  if (updates.isPublished !== undefined) updateObj.is_published = updates.isPublished;
+  if (updates.isPersonal !== undefined) updateObj.is_personal = updates.isPersonal;
+  if (updates.workouts !== undefined) updateObj.workouts = updates.workouts;
+
+  if (Object.keys(updateObj).length > 0) {
+    await Program.updateOne({ id: programId }, { $set: updateObj });
   }
-  
+
   return getProgram(programId);
 }
 
-export function deleteProgram(programId) {
-  const db = getDatabase();
-  const result = db.prepare('DELETE FROM programs WHERE id = ?').run(programId);
-  return result.changes > 0;
+export async function deleteProgram(programId) {
+  const result = await Program.deleteOne({ id: programId });
+  return result.deletedCount > 0;
 }
 
-export function getPublishedPrograms() {
-  const db = getDatabase();
-  const programs = db.prepare(`
-    SELECT * FROM programs 
-    WHERE is_published = 1 AND is_personal = 0
-    ORDER BY created_at DESC
-  `).all();
-  
-  return programs.map(p => getProgram(p.id));
+export async function getPublishedPrograms() {
+  const programs = await Program.find({ is_published: true })
+    .sort({ created_at: -1 })
+    .lean();
+
+  const enriched = [];
+  for (const prog of programs) {
+    const author = await getUser(prog.author_id);
+    enriched.push({
+      id: prog.id,
+      authorId: prog.author_id,
+      authorName: author ? `${author.firstName} ${author.lastName}`.trim() : 'Тренер',
+      title: prog.title,
+      description: prog.description,
+      category: prog.category,
+      difficulty: prog.difficulty,
+      durationWeeks: prog.duration_weeks,
+      price: prog.price,
+      isPublished: prog.is_published,
+      workouts: prog.workouts,
+      purchaseCount: prog.purchase_count,
+      createdAt: prog.created_at,
+    });
+  }
+
+  return enriched;
 }
 
-export function getProgramsByAuthor(authorId) {
-  const db = getDatabase();
-  const programs = db.prepare(`
-    SELECT * FROM programs 
-    WHERE author_id = ?
-    ORDER BY created_at DESC
-  `).all(authorId);
-  
-  return programs.map(p => getProgram(p.id));
+export async function getPersonalPrograms(telegramId) {
+  const programs = await Program.find({
+    author_id: telegramId,
+    is_personal: true
+  }).sort({ created_at: -1 }).lean();
+
+  return programs.map(prog => ({
+    id: prog.id,
+    title: prog.title,
+    workouts: prog.workouts,
+    createdAt: prog.created_at,
+  }));
 }
 
-export function getPersonalPrograms(telegramId) {
-  const db = getDatabase();
-  const programs = db.prepare(`
-    SELECT * FROM programs 
-    WHERE author_id = ? AND is_personal = 1
-    ORDER BY created_at DESC
-  `).all(telegramId);
-  
-  return programs.map(p => getProgram(p.id));
-}
+export async function getTrainerPrograms(trainerId) {
+  const programs = await Program.find({ author_id: trainerId })
+    .sort({ created_at: -1 })
+    .lean();
 
-export function getTrainerPrograms(trainerId) {
-  const db = getDatabase();
-  const programs = db.prepare(`
-    SELECT * FROM programs 
-    WHERE author_id = ? AND is_personal = 0
-    ORDER BY created_at DESC
-  `).all(trainerId);
-  
-  return programs.map(p => getProgram(p.id));
+  return programs.map(prog => ({
+    id: prog.id,
+    title: prog.title,
+    description: prog.description,
+    category: prog.category,
+    price: prog.price,
+    isPublished: prog.is_published,
+    workouts: prog.workouts,
+    purchaseCount: prog.purchase_count,
+    createdAt: prog.created_at,
+  }));
 }
 
 // ==========================================
-// ДНЕВНИК ТРЕНИРОВОК
+// WORKOUT LOGS
 // ==========================================
 
-export function createWorkoutLog(telegramId, data) {
-  const db = getDatabase();
-  const id = `log_${Date.now()}_${telegramId}`;
-  
-  db.prepare(`
-    INSERT INTO workout_logs (id, telegram_id, program_id, workout_title, exercises, duration, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    telegramId,
-    data.programId || null,
-    data.workoutTitle || 'Тренировка',
-    JSON.stringify(data.exercises || []),
-    data.duration || 0,
-    data.notes || ''
-  );
-  
-  return {
-    id,
-    telegramId,
-    programId: data.programId,
-    workoutTitle: data.workoutTitle || 'Тренировка',
-    exercises: data.exercises || [],
-    duration: data.duration || 0,
-    notes: data.notes || '',
-    completedAt: new Date().toISOString(),
-  };
-}
+export async function createWorkoutLog(telegramId, logData) {
+  const id = `wlog_${Date.now()}`;
 
-export function getWorkoutLogs(telegramId, limit = 50) {
-  const db = getDatabase();
-  const logs = db.prepare(`
-    SELECT * FROM workout_logs 
-    WHERE telegram_id = ?
-    ORDER BY completed_at DESC
-    LIMIT ?
-  `).all(telegramId, limit);
-  
-  return logs.map(log => {
-    let exercises = [];
-    try {
-      exercises = JSON.parse(log.exercises || '[]');
-    } catch (e) {
-      exercises = [];
-    }
-    
-    return {
-      id: log.id,
-      telegramId: log.telegram_id,
-      programId: log.program_id,
-      workoutTitle: log.workout_title,
-      exercises,
-      duration: log.duration,
-      notes: log.notes,
-      completedAt: log.completed_at,
-    };
+  await WorkoutLog.create({
+    id,
+    telegram_id: telegramId,
+    program_id: logData.programId,
+    workout_title: logData.workoutTitle || 'Тренировка',
+    exercises: logData.exercises || [],
+    duration: logData.duration || 0,
+    notes: logData.notes || '',
+    completed_at: new Date(),
   });
+
+  return { id };
 }
 
-export function getWorkoutStats(telegramId) {
-  const db = getDatabase();
-  
-  const total = db.prepare('SELECT COUNT(*) as count FROM workout_logs WHERE telegram_id = ?').get(telegramId);
-  const weekly = db.prepare(`
-    SELECT COUNT(*) as count FROM workout_logs 
-    WHERE telegram_id = ? AND completed_at >= datetime('now', '-7 days')
-  `).get(telegramId);
-  const monthly = db.prepare(`
-    SELECT COUNT(*) as count FROM workout_logs 
-    WHERE telegram_id = ? AND completed_at >= datetime('now', '-30 days')
-  `).get(telegramId);
-  const totalDuration = db.prepare(`
-    SELECT COALESCE(SUM(duration), 0) as total FROM workout_logs WHERE telegram_id = ?
-  `).get(telegramId);
-  const lastWorkout = db.prepare(`
-    SELECT completed_at FROM workout_logs WHERE telegram_id = ? ORDER BY completed_at DESC LIMIT 1
-  `).get(telegramId);
-  
+export async function getWorkoutLogs(telegramId, limit = 50) {
+  const logs = await WorkoutLog.find({ telegram_id: telegramId })
+    .sort({ completed_at: -1 })
+    .limit(limit)
+    .lean();
+
+  return logs.map(log => ({
+    id: log.id,
+    programId: log.program_id,
+    workoutTitle: log.workout_title,
+    exercises: log.exercises,
+    duration: log.duration,
+    notes: log.notes,
+    completedAt: log.completed_at,
+  }));
+}
+
+export async function getWorkoutStats(telegramId) {
+  const logs = await WorkoutLog.find({ telegram_id: telegramId }).lean();
+
   return {
-    totalWorkouts: total?.count || 0,
-    weeklyWorkouts: weekly?.count || 0,
-    monthlyWorkouts: monthly?.count || 0,
-    totalDuration: totalDuration?.total || 0,
-    lastWorkout: lastWorkout?.completed_at || null,
+    totalWorkouts: logs.length,
+    totalDuration: logs.reduce((sum, l) => sum + (l.duration || 0), 0),
+    totalExercises: logs.reduce((sum, l) => sum + (l.exercises?.length || 0), 0),
   };
 }
 
 // ==========================================
-// ПОКУПКИ ПРОГРАММ
+// PURCHASES
 // ==========================================
 
-export function purchaseProgram(telegramId, programId) {
-  const db = getDatabase();
-  
+export async function purchaseProgram(telegramId, programId) {
   try {
-    db.prepare(`
-      INSERT INTO purchases (telegram_id, program_id)
-      VALUES (?, ?)
-    `).run(telegramId, programId);
-    
-    // Увеличиваем счётчик покупок
-    db.prepare(`
-      UPDATE programs SET purchase_count = purchase_count + 1 WHERE id = ?
-    `).run(programId);
-    
-    return true;
-  } catch (e) {
-    // UNIQUE constraint failed - уже куплено
-    return false;
+    await Purchase.create({
+      telegram_id: telegramId,
+      program_id: programId,
+    });
+
+    // Increment purchase count
+    await Program.updateOne(
+      { id: programId },
+      { $inc: { purchase_count: 1 } }
+    );
+
+    return { success: true };
+  } catch (error) {
+    if (error.code === 11000) {
+      // Duplicate key - already purchased
+      return { success: false, error: 'Already purchased' };
+    }
+    throw error;
   }
 }
 
-export function hasPurchased(telegramId, programId) {
-  const db = getDatabase();
-  const purchase = db.prepare(`
-    SELECT 1 FROM purchases WHERE telegram_id = ? AND program_id = ?
-  `).get(telegramId, programId);
-  
+export async function hasPurchased(telegramId, programId) {
+  const purchase = await Purchase.findOne({
+    telegram_id: telegramId,
+    program_id: programId
+  }).lean();
   return !!purchase;
 }
 
-export function getPurchasedPrograms(telegramId) {
-  const db = getDatabase();
-  const purchases = db.prepare(`
-    SELECT program_id FROM purchases WHERE telegram_id = ?
-  `).all(telegramId);
-  
-  return purchases
-    .map(p => getProgram(p.program_id))
-    .filter(p => p !== null);
+export async function getPurchasedPrograms(telegramId) {
+  const purchases = await Purchase.find({ telegram_id: telegramId }).lean();
+
+  const programs = [];
+  for (const p of purchases) {
+    const prog = await getProgram(p.program_id);
+    if (prog) {
+      programs.push({
+        ...prog,
+        purchasedAt: p.purchased_at,
+      });
+    }
+  }
+
+  return programs;
+}
+
+// ==========================================
+// AI MESSAGES
+// ==========================================
+
+export async function saveAIMessage(userId, role, content) {
+  await AIMessage.create({
+    user_id: userId,
+    role,
+    content,
+  });
+}
+
+export async function getAIHistory(userId, limit = 20) {
+  const messages = await AIMessage.find({ user_id: userId })
+    .sort({ created_at: -1 })
+    .limit(limit)
+    .lean();
+
+  return messages.reverse().map(m => ({
+    role: m.role,
+    content: m.content,
+  }));
+}
+
+export async function clearAIHistory(userId) {
+  await AIMessage.deleteMany({ user_id: userId });
+}
+
+export async function incrementAIRequests(userId) {
+  await User.updateOne(
+    { telegram_id: userId },
+    { $inc: { ai_requests_count: 1 } }
+  );
+}
+
+export async function resetAIRequestsIfNeeded(userId) {
+  const user = await User.findOne({ telegram_id: userId }).lean();
+  if (!user) return;
+
+  const now = new Date();
+  const resetDate = user.ai_requests_reset_date ? new Date(user.ai_requests_reset_date) : null;
+
+  if (!resetDate || now >= resetDate) {
+    const nextReset = new Date();
+    nextReset.setDate(nextReset.getDate() + 1);
+    nextReset.setHours(0, 0, 0, 0);
+
+    await User.updateOne(
+      { telegram_id: userId },
+      { $set: { ai_requests_count: 0, ai_requests_reset_date: nextReset } }
+    );
+  }
+}
+
+// ==========================================
+// NEWS
+// ==========================================
+
+export async function createNews(authorId, authorName, title, content) {
+  const id = `news_${Date.now()}`;
+
+  await News.create({
+    id,
+    author_id: authorId,
+    author_name: authorName,
+    title,
+    content,
+  });
+
+  return { id };
+}
+
+export async function getAllNews() {
+  const news = await News.find()
+    .sort({ created_at: -1 })
+    .lean();
+
+  return news.map(n => ({
+    id: n.id,
+    authorId: n.author_id,
+    authorName: n.author_name,
+    title: n.title,
+    content: n.content,
+    createdAt: n.created_at,
+  }));
+}
+
+export async function deleteNews(newsId) {
+  const result = await News.deleteOne({ id: newsId });
+  return result.deletedCount > 0;
+}
+
+// ==========================================
+// SUPPORT MESSAGES
+// ==========================================
+
+export async function createSupportMessage(fromUserId, fromUserName, fromUsername, toUserId, message) {
+  const id = `msg_${Date.now()}`;
+
+  await SupportMessage.create({
+    id,
+    from_user_id: fromUserId,
+    from_user_name: fromUserName,
+    from_username: fromUsername,
+    to_user_id: toUserId,
+    message,
+  });
+
+  return { id };
+}
+
+export async function getSupportMessages() {
+  return SupportMessage.find().sort({ created_at: 1 }).lean();
+}
+
+export async function getUserSupportMessages(userId) {
+  return SupportMessage.find({
+    $or: [
+      { from_user_id: userId },
+      { to_user_id: String(userId) }
+    ]
+  }).sort({ created_at: 1 }).lean();
+}
+
+export async function getUniqueSupportUsers() {
+  const messages = await SupportMessage.find({ to_user_id: 'support' }).lean();
+  const uniqueUsers = new Map();
+
+  for (const msg of messages) {
+    if (!uniqueUsers.has(msg.from_user_id)) {
+      uniqueUsers.set(msg.from_user_id, {
+        id: msg.from_user_id,
+        name: msg.from_user_name,
+        username: msg.from_username,
+      });
+    }
+  }
+
+  return Array.from(uniqueUsers.values());
 }
