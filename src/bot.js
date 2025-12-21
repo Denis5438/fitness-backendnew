@@ -27,9 +27,9 @@ bot.command('start', async (ctx) => {
   const telegramId = ctx.from.id;
 
   // Создаём пользователя если его нет
-  let user = getUser(telegramId);
+  let user = await getUser(telegramId);
   if (!user) {
-    user = createUser(telegramId, {
+    user = await createUser(telegramId, {
       username: ctx.from.username || '',
       first_name: ctx.from.first_name || '',
       last_name: ctx.from.last_name || '',
@@ -38,8 +38,8 @@ bot.command('start', async (ctx) => {
 
   // Автоматически назначаем ADMIN роль для админа
   if (isAdmin(telegramId) && user.role !== 'ADMIN') {
-    setUserRole(telegramId, 'ADMIN');
-    user = getUser(telegramId);
+    await setUserRole(telegramId, 'ADMIN');
+    user = await getUser(telegramId);
   }
 
   await ctx.reply(
@@ -61,7 +61,7 @@ bot.command('start', async (ctx) => {
 
 bot.command('help', async (ctx) => {
   const telegramId = ctx.from.id;
-  const user = getUser(telegramId);
+  const user = await getUser(telegramId);
   const role = user?.role || 'USER';
 
   let helpText = `❓ <b>Помощь</b>\n\n` +
@@ -89,17 +89,17 @@ bot.command('help', async (ctx) => {
 
 bot.command('me', async (ctx) => {
   const telegramId = ctx.from.id;
-  let user = getUser(telegramId);
+  let user = await getUser(telegramId);
 
   if (!user) {
-    user = createUser(telegramId, {
+    user = await createUser(telegramId, {
       username: ctx.from.username || '',
       first_name: ctx.from.first_name || '',
       last_name: ctx.from.last_name || '',
     });
   }
 
-  const stats = getWorkoutStats(telegramId);
+  const stats = await getWorkoutStats(telegramId);
 
   // Экранируем HTML спецсимволы в имени
   const escapeHtml = (str) => String(str || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
@@ -163,10 +163,10 @@ bot.command('deposit', async (ctx) => {
 // Команда проверки баланса
 bot.command('balance', async (ctx) => {
   const telegramId = ctx.from.id;
-  let user = getUser(telegramId);
+  let user = await getUser(telegramId);
 
   if (!user) {
-    user = createUser(telegramId, {
+    user = await createUser(telegramId, {
       username: ctx.from.username || '',
       first_name: ctx.from.first_name || '',
       last_name: ctx.from.last_name || '',
@@ -201,7 +201,7 @@ bot.command('add_moderator', async (ctx) => {
   }
 
   const username = args[1];
-  const targetUser = findUserByUsername(username);
+  const targetUser = await findUserByUsername(username);
 
   if (!targetUser) {
     await ctx.reply(
@@ -216,7 +216,7 @@ bot.command('add_moderator', async (ctx) => {
     return;
   }
 
-  setUserRole(targetUser.telegramId, 'MODERATOR');
+  await setUserRole(targetUser.telegramId, 'MODERATOR');
 
   await ctx.reply(`✅ Пользователь ${username} назначен **МОДЕРАТОРОМ**!`, { parse_mode: 'Markdown' });
 
@@ -248,7 +248,7 @@ bot.command('remove_moderator', async (ctx) => {
   }
 
   const username = args[1];
-  const targetUser = findUserByUsername(username);
+  const targetUser = await findUserByUsername(username);
 
   if (!targetUser) {
     await ctx.reply(`❌ Пользователь ${username} не найден.`);
@@ -260,7 +260,7 @@ bot.command('remove_moderator', async (ctx) => {
     return;
   }
 
-  setUserRole(targetUser.telegramId, 'USER');
+  await setUserRole(targetUser.telegramId, 'USER');
 
   await ctx.reply(`✅ Роль модератора снята с ${username}.`);
 });
@@ -273,7 +273,7 @@ bot.command('list_moderators', async (ctx) => {
     return;
   }
 
-  const moderators = getUsersByRole('MODERATOR');
+  const moderators = await getUsersByRole('MODERATOR');
 
   if (moderators.length === 0) {
     await ctx.reply('📋 Модераторов пока нет.');
@@ -295,7 +295,7 @@ bot.command('list_trainers', async (ctx) => {
     return;
   }
 
-  const trainers = getUsersByRole('TRAINER');
+  const trainers = await getUsersByRole('TRAINER');
 
   if (trainers.length === 0) {
     await ctx.reply('📋 Тренеров пока нет.');
