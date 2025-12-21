@@ -104,3 +104,19 @@ CREATE INDEX IF NOT EXISTS idx_workout_logs_user ON workout_logs(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_user ON ai_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_news_created ON news(created_at);
+
+-- Сообщения техподдержки
+CREATE TABLE IF NOT EXISTS support_messages (
+    id TEXT PRIMARY KEY,
+    from_user_id INTEGER NOT NULL,
+    from_user_name TEXT DEFAULT '',
+    from_username TEXT DEFAULT '',
+    to_user_id TEXT NOT NULL, -- 'support' для сообщений в поддержку, или telegram_id для ответов
+    message TEXT NOT NULL,
+    is_read INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_messages_from ON support_messages(from_user_id);
+CREATE INDEX IF NOT EXISTS idx_support_messages_to ON support_messages(to_user_id);
+CREATE INDEX IF NOT EXISTS idx_support_messages_created ON support_messages(created_at);
