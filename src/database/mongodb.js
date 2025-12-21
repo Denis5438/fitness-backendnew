@@ -18,10 +18,7 @@ export async function connectMongoDB() {
     }
 
     try {
-        await mongoose.connect(uri, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
+        await mongoose.connect(uri);
 
         isConnected = true;
         console.log('✅ MongoDB connected to Grizzly database');
