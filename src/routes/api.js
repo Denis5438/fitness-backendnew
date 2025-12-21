@@ -133,13 +133,15 @@ async function authMiddleware(req, res, next) {
   }
 
   try {
-    // Получаем или создаём пользователя (async MongoDB)
+    // Проверяем есть ли пользователь в БД (регистрация через /start в боте)
     let user = await getUser(telegramUser.id);
+
     if (!user) {
-      user = await createUser(telegramUser.id, {
-        username: telegramUser.username || '',
-        first_name: telegramUser.first_name || '',
-        last_name: telegramUser.last_name || '',
+      // Пользователь не зарегистрирован через бота
+      console.log(`⚠️ User ${telegramUser.id} not registered. Needs to /start bot first.`);
+      return res.status(403).json({
+        error: 'not_registered',
+        message: 'Для использования приложения сначала напишите /start боту'
       });
     }
 
