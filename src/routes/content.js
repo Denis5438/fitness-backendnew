@@ -492,28 +492,37 @@ router.post('/support/reply/:userId', authMiddleware, async (req, res) => {
 
 // Сбросить данные пользователя (только для админа)
 router.post('/reset-account/:userId', authMiddleware, async (req, res) => {
+    console.log('🔄 Reset account called. User role:', req.user.role, 'Target userId:', req.params.userId);
     try {
         if (req.user.role !== 'ADMIN') {
+            console.log('❌ Reset account denied. User role is not ADMIN:', req.user.role);
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
         const { userId } = req.params;
         const db = getDatabase();
 
+        console.log('🗑️ Deleting data for user:', userId);
+
         // Удаляем программы пользователя
-        db.prepare(`DELETE FROM programs WHERE author_id = ?`).run(userId);
+        const programs = db.prepare(`DELETE FROM programs WHERE author_id = ?`).run(userId);
+        console.log('  - Programs deleted:', programs.changes);
 
         // Удаляем историю тренировок
-        db.prepare(`DELETE FROM workout_logs WHERE telegram_id = ?`).run(userId);
+        const workouts = db.prepare(`DELETE FROM workout_logs WHERE telegram_id = ?`).run(userId);
+        console.log('  - Workout logs deleted:', workouts.changes);
 
         // Удаляем покупки
-        db.prepare(`DELETE FROM purchases WHERE telegram_id = ?`).run(userId);
+        const purchases = db.prepare(`DELETE FROM purchases WHERE telegram_id = ?`).run(userId);
+        console.log('  - Purchases deleted:', purchases.changes);
 
         // Удаляем AI сообщения
-        db.prepare(`DELETE FROM ai_messages WHERE user_id = ?`).run(userId);
+        const aiMsgs = db.prepare(`DELETE FROM ai_messages WHERE user_id = ?`).run(userId);
+        console.log('  - AI messages deleted:', aiMsgs.changes);
 
         // НЕ удаляем пользователя и его роль!
 
+        console.log('✅ Account reset successful for user:', userId);
         res.json({ success: true, message: `Аккаунт ${userId} сброшен!` });
     } catch (error) {
         console.error('❌ Ошибка сброса аккаунта:', error);
