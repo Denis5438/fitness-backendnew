@@ -141,9 +141,10 @@ function authMiddleware(req, res, next) {
   }
 
   // FORCE ADMIN ROLE: Если ID совпадает с конфигом, но роль не ADMIN — обновляем
-  if (config.adminTelegramId && user.telegram_id === config.adminTelegramId && user.role !== 'ADMIN') {
-    console.log(`👑 Auto-promoting user ${user.telegram_id} to ADMIN`);
-    setUserRole(user.telegram_id, 'ADMIN');
+  console.log('🔍 Auth check:', { userId: user.telegramId, adminId: config.adminTelegramId, userRole: user.role });
+  if (config.adminTelegramId && user.telegramId === config.adminTelegramId && user.role !== 'ADMIN') {
+    console.log(`👑 Auto-promoting user ${user.telegramId} to ADMIN`);
+    setUserRole(user.telegramId, 'ADMIN');
     user.role = 'ADMIN'; // Обновляем объект в памяти
   }
 
