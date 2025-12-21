@@ -26,6 +26,8 @@ import {
   purchaseProgram,
   hasPurchased,
   getPurchasedPrograms,
+  getExerciseRecords,
+  saveExerciseRecords,
 } from '../database/users.js';
 
 const router = express.Router();
@@ -567,13 +569,118 @@ router.post('/workouts', authMiddleware, (req, res) => {
 });
 
 // GET /api/workouts/stats - Статистика тренировок
-router.get('/workouts/stats', authMiddleware, (req, res) => {
-  const stats = getWorkoutStats(req.user.telegramId);
+router.get('/workouts/stats', authMiddleware, async (req, res) => {
+  try {
+    const stats = await getWorkoutStats(req.user.telegramId);
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error getting workout stats:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
 
-  res.json({
-    success: true,
-    stats,
-  });
+// GET /api/workouts/history - Получить историю тренировок
+router.get('/workouts/history', authMiddleware, async (req, res) => {
+  try {
+    const history = await getWorkoutLogs(req.user.telegramId, 100);
+    res.json({ success: true, history });
+  } catch (error) {
+    console.error('Error getting workout history:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// POST /api/workouts/log - Сохранить тренировку
+router.post('/workouts/log', authMiddleware, async (req, res) => {
+  try {
+    const { programId, workoutTitle, exercises, duration, notes, records } = req.body;
+
+    const result = await createWorkoutLog(req.user.telegramId, {
+      programId,
+      workoutTitle,
+      exercises,
+      duration,
+      notes,
+    });
+
+    // Сохраняем рекорды если есть
+    if (records && Object.keys(records).length > 0) {
+      await saveExerciseRecords(req.user.telegramId, records);
+    }
+
+    res.json({ success: true, workoutId: result.id });
+  } catch (error) {
+    console.error('Error saving workout:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// GET /api/workouts/records - Получить рекорды упражнений
+router.get('/workouts/records', authMiddleware, async (req, res) => {
+  try {
+    const records = await getExerciseRecords(req.user.telegramId);
+    res.json({ success: true, records });
+  } catch (error) {
+    console.error('Error getting exercise records:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// GET /api/programs/my - Получить свои программы
+router.get('/programs/my', authMiddleware, async (req, res) => {
+  try {
+    const programs = await getPersonalPrograms(req.user.telegramId);
+    res.json({ success: true, programs });
+  } catch (error) {
+    console.error('Error getting personal programs:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// POST /api/programs/my - Сохранить личную программу
+router.post('/programs/my', authMiddleware, async (req, res) => {
+  try {
+    const { title, exercises } = req.body;
+    const program = await createProgram(req.user.telegramId, {
+      title,
+      workouts: exercises,
+      isPersonal: true,
+      isPublished: false,
+    });
+    res.json({ success: true, program });
+  } catch (error) {
+    console.error('Error saving personal program:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// DELETE /api/programs/my/:id - Удалить личную программу
+router.delete('/programs/my/:id', authMiddleware, async (req, res) => {
+  try {
+    const program = await getProgram(req.params.id);
+    if (!program) {
+      return res.status(404).json({ error: 'Программа не найдена' });
+    }
+    if (program.authorId !== req.user.telegramId) {
+      return res.status(403).json({ error: 'Нельзя удалить чужую программу' });
+    }
+    await deleteProgram(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting program:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// GET /api/purchases - Получить купленные программы
+router.get('/purchases', authMiddleware, async (req, res) => {
+  try {
+    const programs = await getPurchasedPrograms(req.user.telegramId);
+    res.json({ success: true, programs });
+  } catch (error) {
+    console.error('Error getting purchases:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ==========================================

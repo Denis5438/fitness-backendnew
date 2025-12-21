@@ -133,6 +133,20 @@ const supportMessageSchema = new Schema({
     collection: 'fitmarket_support_messages'
 });
 
+// ==================== EXERCISE RECORD ====================
+const exerciseRecordSchema = new Schema({
+    telegram_id: { type: Number, required: true, index: true },
+    exercise_name: { type: String, required: true },
+    best_weight: { type: Number, default: 0 },
+    best_reps: { type: Number, default: 0 },
+    best_volume: { type: Number, default: 0 }, // weight * reps
+    updated_at: { type: Date, default: Date.now },
+}, {
+    timestamps: false,
+    collection: 'fitmarket_exercise_records'
+});
+exerciseRecordSchema.index({ telegram_id: 1, exercise_name: 1 }, { unique: true });
+
 // Export models
 export const User = mongoose.model('FitmarketUser', userSchema);
 export const TrainerRequest = mongoose.model('FitmarketTrainerRequest', trainerRequestSchema);
@@ -142,3 +156,4 @@ export const Purchase = mongoose.model('FitmarketPurchase', purchaseSchema);
 export const AIMessage = mongoose.model('FitmarketAIMessage', aiMessageSchema);
 export const News = mongoose.model('FitmarketNews', newsSchema);
 export const SupportMessage = mongoose.model('FitmarketSupportMessage', supportMessageSchema);
+export const ExerciseRecord = mongoose.model('FitmarketExerciseRecord', exerciseRecordSchema);

@@ -9,7 +9,8 @@ import {
   Purchase,
   AIMessage,
   News,
-  SupportMessage
+  SupportMessage,
+  ExerciseRecord
 } from './models.js';
 
 // ==========================================
@@ -554,4 +555,44 @@ export async function getUniqueSupportUsers() {
   }
 
   return Array.from(uniqueUsers.values());
+}
+
+// ==========================================
+// EXERCISE RECORDS
+// ==========================================
+
+export async function getExerciseRecords(telegramId) {
+  const records = await ExerciseRecord.find({ telegram_id: telegramId }).lean();
+
+  // Convert to object keyed by exercise name
+  const result = {};
+  for (const r of records) {
+    result[r.exercise_name] = {
+      weight: r.best_weight,
+      reps: r.best_reps,
+      volume: r.best_volume,
+    };
+  }
+  return result;
+}
+
+export async function saveExerciseRecords(telegramId, records) {
+  // records is an object like { "Жим лёжа": { weight: 100, reps: 8 }, ... }
+  for (const [exerciseName, data] of Object.entries(records)) {
+    const volume = (data.weight || 0) * (data.reps || 0);
+
+    await ExerciseRecord.updateOne(
+      { telegram_id: telegramId, exercise_name: exerciseName },
+      {
+        $set: {
+          best_weight: data.weight || 0,
+          best_reps: data.reps || 0,
+          best_volume: volume,
+          updated_at: new Date(),
+        }
+      },
+      { upsert: true }
+    );
+  }
+  return true;
 }
