@@ -77,7 +77,17 @@ async function start() {
 
     // Запуск Telegram бота
     if (config.telegram.botToken) {
-      await startBot();
+      try {
+        await startBot();
+      } catch (botError) {
+        // Игнорируем ошибку конфлика (если бот уже запущен в другом месте)
+        if (botError?.response?.error_code === 409) {
+          console.warn('⚠️ Telegram Bot Conflict: Another instance is running. API-only mode enabled.');
+        } else {
+          console.error('❌ Failed to start Telegram bot:', botError);
+          // Не роняем сервер из-за ошибки бота, API должен работать
+        }
+      }
     } else {
       console.warn('⚠️ TELEGRAM_BOT_TOKEN не задан - Telegram bot не запущен (API работает)');
     }
