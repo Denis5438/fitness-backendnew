@@ -28,6 +28,8 @@ export async function getUser(telegramId) {
     lastName: user.last_name,
     role: user.role,
     subscriptionTier: user.subscription_tier,
+    balance: user.balance || 0,
+    lastSeenNewsId: user.last_seen_news_id || '',
     aiRequestsCount: user.ai_requests_count,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
@@ -594,5 +596,69 @@ export async function saveExerciseRecords(telegramId, records) {
       { upsert: true }
     );
   }
+  return true;
+}
+
+// ==========================================
+// NOTIFICATIONS (Last Seen News)
+// ==========================================
+
+export async function updateLastSeenNews(telegramId, newsId) {
+  await User.updateOne(
+    { telegram_id: telegramId },
+    { $set: { last_seen_news_id: newsId } }
+  );
+  return true;
+}
+
+// ==========================================
+// ACCOUNT RESET (Admin)
+// ==========================================
+
+export async function resetUserAccount(telegramId) {
+  // Удаляем все тренировки пользователя
+  await WorkoutLog.deleteMany({ telegram_id: telegramId });
+
+  // Удаляем все личные программы пользователя
+  await Program.deleteMany({ author_id: telegramId, is_published: false });
+
+  // Удаляем все покупки
+  await Purchase.deleteMany({ telegram_id: telegramId });
+
+  // Удаляем рекорды упражнений
+  await ExerciseRecord.deleteMany({ telegram_id: telegramId });
+
+  // Сбрасываем баланс но СОХРАНЯЕМ роль!
+  await User.updateOne(
+    { telegram_id: telegramId },
+    {
+      $set: {
+        balance: 0,
+        last_seen_news_id: '',
+        ai_requests_count: 0,
+      }
+    }
+  );
+
+  return { success: true, message: 'Аккаунт успешно сброшен' };
+}
+
+// ==========================================
+// BALANCE
+// ==========================================
+
+export async function updateUserBalance(telegramId, amount) {
+  await User.updateOne(
+    { telegram_id: telegramId },
+    { $inc: { balance: amount } }
+  );
+  return true;
+}
+
+export async function setUserBalance(telegramId, balance) {
+  await User.updateOne(
+    { telegram_id: telegramId },
+    { $set: { balance: balance } }
+  );
   return true;
 }

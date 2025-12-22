@@ -21,6 +21,8 @@ const userSchema = new Schema({
         default: 'free',
         enum: ['free', 'pro']
     },
+    balance: { type: Number, default: 0 }, // Баланс пользователя
+    last_seen_news_id: { type: String, default: '' }, // ID последней прочитанной новости
     ai_requests_count: { type: Number, default: 0 },
     ai_requests_reset_date: { type: Date },
 }, {

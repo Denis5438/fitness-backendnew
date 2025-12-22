@@ -28,6 +28,8 @@ import {
   getPurchasedPrograms,
   getExerciseRecords,
   saveExerciseRecords,
+  updateLastSeenNews,
+  resetUserAccount,
 } from '../database/users.js';
 
 const router = express.Router();
@@ -217,6 +219,51 @@ router.post('/user/update', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error updating user:', error);
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// POST /api/user/seen-news - Отметить новости как прочитанные
+router.post('/user/seen-news', authMiddleware, async (req, res) => {
+  try {
+    const { newsId } = req.body;
+    if (!newsId) {
+      return res.status(400).json({ error: 'Не указан newsId' });
+    }
+
+    await updateLastSeenNews(req.user.telegramId, newsId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating seen news:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// POST /api/admin/reset-account - Сбросить аккаунт пользователя (только админ)
+router.post('/admin/reset-account', authMiddleware, async (req, res) => {
+  try {
+    // Только админ может сбрасывать аккаунты
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+
+    const { telegramId } = req.body;
+    if (!telegramId) {
+      return res.status(400).json({ error: 'Не указан Telegram ID' });
+    }
+
+    // Проверяем что пользователь существует
+    const targetUser = await getUser(parseInt(telegramId));
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const result = await resetUserAccount(parseInt(telegramId));
+    console.log(`♻️ Admin ${req.user.telegramId} reset account of user ${telegramId}`);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting account:', error);
+    res.status(500).json({ error: 'Ошибка сброса аккаунта' });
   }
 });
 
