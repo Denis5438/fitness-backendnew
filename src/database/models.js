@@ -11,9 +11,16 @@ const userSchema = new Schema({
     username: { type: String, default: '' },
     first_name: { type: String, default: '' },
     last_name: { type: String, default: '' },
+    // Старое поле role для обратной совместимости (будет мигрировано)
     role: {
         type: String,
         default: 'USER',
+        enum: ['USER', 'TRAINER', 'MODERATOR', 'ADMIN']
+    },
+    // Новое поле roles - массив ролей для поддержки множественных ролей
+    roles: {
+        type: [String],
+        default: ['USER'],
         enum: ['USER', 'TRAINER', 'MODERATOR', 'ADMIN']
     },
     subscription_tier: {

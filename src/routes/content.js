@@ -24,6 +24,8 @@ import {
     approveTrainerRequest,
     rejectTrainerRequest,
     setUserRole,
+    addRole,
+    removeRole,
     getUser,
     createSupportMessage,
     getSupportMessages,
@@ -465,7 +467,7 @@ router.get('/roles', authMiddleware, async (req, res) => {
     }
 });
 
-// Назначить роль пользователю
+// Назначить роль пользователю (добавляет роль, не заменяет)
 router.post('/roles/assign', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
@@ -474,48 +476,92 @@ router.post('/roles/assign', authMiddleware, async (req, res) => {
 
         const { telegramId, role } = req.body;
 
-        if (!telegramId || !role || !['MODERATOR', 'TRAINER'].includes(role)) {
-            return res.status(400).json({ error: 'Некорректные данные' });
+        // Валидация
+        if (!telegramId) {
+            return res.status(400).json({ error: 'Введите Telegram ID', code: 'empty_id' });
         }
 
-        // Check if user exists, create if not
-        let user = await getUser(telegramId);
+        const numericId = parseInt(telegramId);
+        if (isNaN(numericId)) {
+            return res.status(400).json({ error: 'Telegram ID должен быть числом', code: 'invalid_id' });
+        }
+
+        if (!role || !['MODERATOR', 'TRAINER'].includes(role)) {
+            return res.status(400).json({ error: 'Некорректная роль', code: 'invalid_role' });
+        }
+
+        // Проверяем существует ли пользователь
+        let user = await getUser(numericId);
         if (!user) {
-            // Create minimal user record
-            await User.create({
-                telegram_id: telegramId,
-                role: role,
-            });
-        } else {
-            await setUserRole(telegramId, role);
+            return res.status(404).json({ error: 'Пользователь не найден. Он должен сначала запустить бота.', code: 'user_not_found' });
         }
 
-        res.json({ success: true, message: `Роль ${role} назначена пользователю ${telegramId}` });
+        // Добавляем роль
+        const result = await addRole(numericId, role);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.message, code: result.error });
+        }
+
+        // Получаем обновлённого пользователя
+        const updatedUser = await getUser(numericId);
+
+        console.log(`✅ Роль ${role} назначена пользователю ${numericId} админом ${req.user.telegramId}`);
+        res.json({
+            success: true,
+            message: result.alreadyHas ? 'Роль уже была назначена' : `Роль ${role} успешно назначена`,
+            alreadyHas: result.alreadyHas,
+            user: updatedUser
+        });
     } catch (error) {
         console.error('❌ Ошибка назначения роли:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Ошибка сервера', code: 'server_error' });
     }
 });
 
-// Снять роль (вернуть USER)
+// Снять конкретную роль (не все роли, только указанную)
 router.post('/roles/remove', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
-        const { telegramId } = req.body;
+        const { telegramId, role } = req.body;
 
+        // Валидация
         if (!telegramId) {
-            return res.status(400).json({ error: 'Не указан ID пользователя' });
+            return res.status(400).json({ error: 'Не указан ID пользователя', code: 'empty_id' });
         }
 
-        await setUserRole(telegramId, 'USER');
+        const numericId = parseInt(telegramId);
+        if (isNaN(numericId)) {
+            return res.status(400).json({ error: 'Telegram ID должен быть числом', code: 'invalid_id' });
+        }
 
-        res.json({ success: true, message: `Роль снята с пользователя ${telegramId}` });
+        if (!role || !['MODERATOR', 'TRAINER'].includes(role)) {
+            return res.status(400).json({ error: 'Укажите роль для снятия', code: 'invalid_role' });
+        }
+
+        // Удаляем конкретную роль
+        const result = await removeRole(numericId, role);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.message, code: result.error });
+        }
+
+        // Получаем обновлённого пользователя
+        const updatedUser = await getUser(numericId);
+
+        console.log(`✅ Роль ${role} снята с пользователя ${numericId} админом ${req.user.telegramId}`);
+        res.json({
+            success: true,
+            message: result.notHad ? 'Роль не была назначена' : `Роль ${role} успешно снята`,
+            notHad: result.notHad,
+            user: updatedUser
+        });
     } catch (error) {
         console.error('❌ Ошибка снятия роли:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Ошибка сервера', code: 'server_error' });
     }
 });
 

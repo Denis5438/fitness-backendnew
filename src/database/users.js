@@ -21,12 +21,34 @@ export async function getUser(telegramId) {
   const user = await User.findOne({ telegram_id: telegramId }).lean();
   if (!user) return null;
 
+  // Автоматическая миграция: если roles пустой, мигрируем из role
+  let roles = user.roles || [];
+  if (roles.length === 0 && user.role) {
+    // Мигрируем старое поле role в массив roles
+    roles = ['USER'];
+    if (user.role !== 'USER') {
+      roles.push(user.role);
+    }
+    // Сохраняем миграцию в БД
+    await User.updateOne(
+      { telegram_id: telegramId },
+      { $set: { roles: roles } }
+    );
+  }
+
+  // Для обратной совместимости возвращаем главную роль в поле role
+  const primaryRole = roles.includes('ADMIN') ? 'ADMIN'
+    : roles.includes('MODERATOR') ? 'MODERATOR'
+      : roles.includes('TRAINER') ? 'TRAINER'
+        : 'USER';
+
   return {
     telegramId: user.telegram_id,
     username: user.username,
     firstName: user.first_name,
     lastName: user.last_name,
-    role: user.role,
+    role: primaryRole, // Главная роль для обратной совместимости
+    roles: roles, // Полный массив ролей
     subscriptionTier: user.subscription_tier,
     balance: user.balance || 0,
     lastSeenNewsId: user.last_seen_news_id || '',
@@ -47,6 +69,7 @@ export async function createUser(telegramId, userData) {
     first_name: userData.first_name || '',
     last_name: userData.last_name || '',
     role: 'USER',
+    roles: ['USER'], // Новый формат
   });
 
   return getUser(telegramId);
@@ -68,23 +91,118 @@ export async function updateUser(telegramId, updates) {
   return getUser(telegramId);
 }
 
+// Старая функция - оставляем для обратной совместимости
 export async function setUserRole(telegramId, role) {
+  // Обновляем и role, и roles для совместимости
+  const roles = role === 'USER' ? ['USER'] : ['USER', role];
   await User.updateOne(
     { telegram_id: telegramId },
-    { $set: { role: role } }
+    { $set: { role: role, roles: roles } }
   );
   return getUser(telegramId);
 }
 
+// ==========================================
+// НОВЫЕ ФУНКЦИИ ДЛЯ МНОЖЕСТВЕННЫХ РОЛЕЙ
+// ==========================================
+
+// Добавить роль пользователю
+export async function addRole(telegramId, role) {
+  const user = await User.findOne({ telegram_id: telegramId });
+  if (!user) {
+    return { success: false, error: 'user_not_found', message: 'Пользователь не найден' };
+  }
+
+  // Получаем текущие роли
+  let roles = user.roles || [];
+  if (roles.length === 0 && user.role) {
+    roles = user.role === 'USER' ? ['USER'] : ['USER', user.role];
+  }
+
+  // Проверяем, есть ли уже эта роль
+  if (roles.includes(role)) {
+    return { success: true, alreadyHas: true, message: 'Роль уже назначена' };
+  }
+
+  // Добавляем роль
+  roles.push(role);
+
+  // Определяем главную роль для обратной совместимости
+  const primaryRole = roles.includes('ADMIN') ? 'ADMIN'
+    : roles.includes('MODERATOR') ? 'MODERATOR'
+      : roles.includes('TRAINER') ? 'TRAINER'
+        : 'USER';
+
+  await User.updateOne(
+    { telegram_id: telegramId },
+    { $set: { roles: roles, role: primaryRole } }
+  );
+
+  return { success: true, message: `Роль ${role} назначена` };
+}
+
+// Удалить конкретную роль у пользователя
+export async function removeRole(telegramId, role) {
+  const user = await User.findOne({ telegram_id: telegramId });
+  if (!user) {
+    return { success: false, error: 'user_not_found', message: 'Пользователь не найден' };
+  }
+
+  // Получаем текущие роли
+  let roles = user.roles || [];
+  if (roles.length === 0 && user.role) {
+    roles = user.role === 'USER' ? ['USER'] : ['USER', user.role];
+  }
+
+  // Нельзя удалить роль USER
+  if (role === 'USER') {
+    return { success: false, error: 'cannot_remove_user', message: 'Нельзя удалить базовую роль USER' };
+  }
+
+  // Проверяем, есть ли эта роль
+  if (!roles.includes(role)) {
+    return { success: true, notHad: true, message: 'Роль не была назначена' };
+  }
+
+  // Удаляем роль
+  roles = roles.filter(r => r !== role);
+
+  // Определяем главную роль
+  const primaryRole = roles.includes('ADMIN') ? 'ADMIN'
+    : roles.includes('MODERATOR') ? 'MODERATOR'
+      : roles.includes('TRAINER') ? 'TRAINER'
+        : 'USER';
+
+  await User.updateOne(
+    { telegram_id: telegramId },
+    { $set: { roles: roles, role: primaryRole } }
+  );
+
+  return { success: true, message: `Роль ${role} снята` };
+}
+
+// Проверить наличие роли
+export async function hasRole(telegramId, role) {
+  const user = await getUser(telegramId);
+  if (!user) return false;
+  return user.roles.includes(role);
+}
+
+// Получить пользователей с определённой ролью (обновлено для массива)
 export async function getUsersByRole(role) {
-  const users = await User.find({ role: role }).lean();
-  return users.map(u => ({
-    telegramId: u.telegram_id,
-    username: u.username,
-    firstName: u.first_name,
-    lastName: u.last_name,
-    role: u.role,
-  }));
+  // Ищем в массиве roles
+  const users = await User.find({ roles: role }).lean();
+  return users.map(u => {
+    const roles = u.roles || (u.role === 'USER' ? ['USER'] : ['USER', u.role]);
+    return {
+      telegramId: u.telegram_id,
+      username: u.username,
+      firstName: u.first_name,
+      lastName: u.last_name,
+      role: u.role,
+      roles: roles,
+    };
+  });
 }
 
 export async function findUserByUsername(username) {
