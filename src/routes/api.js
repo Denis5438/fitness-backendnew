@@ -31,6 +31,7 @@ import {
   updateLastSeenNews,
   resetUserAccount,
 } from '../database/users.js';
+import { Settings } from '../database/models.js';
 
 const router = express.Router();
 
@@ -264,6 +265,44 @@ router.post('/admin/reset-account', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error resetting account:', error);
     res.status(500).json({ error: 'Ошибка сброса аккаунта' });
+  }
+});
+
+// ==========================================
+// GLOBAL SETTINGS API
+// ==========================================
+
+// GET /api/settings/new-year-theme - Получить статус новогодней темы (публичный)
+router.get('/settings/new-year-theme', async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'newYearThemeEnabled' });
+    res.json({ enabled: setting?.value ?? true }); // По умолчанию включено
+  } catch (error) {
+    console.error('Error getting new year theme setting:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// POST /api/settings/new-year-theme - Установить статус новогодней темы (только админ/модератор)
+router.post('/settings/new-year-theme', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN' && req.user.role !== 'MODERATOR') {
+      return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+
+    const { enabled } = req.body;
+
+    await Settings.updateOne(
+      { key: 'newYearThemeEnabled' },
+      { $set: { value: !!enabled } },
+      { upsert: true }
+    );
+
+    console.log(`🎄 ${req.user.telegramId} set newYearTheme to ${enabled}`);
+    res.json({ success: true, enabled: !!enabled });
+  } catch (error) {
+    console.error('Error setting new year theme:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

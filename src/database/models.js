@@ -150,6 +150,15 @@ const exerciseRecordSchema = new Schema({
 exerciseRecordSchema.index({ telegram_id: 1, exercise_name: 1 }, { unique: true });
 
 // Export models
+// ==================== SETTINGS ====================
+const settingsSchema = new Schema({
+    key: { type: String, required: true, unique: true },
+    value: { type: Schema.Types.Mixed },
+}, {
+    timestamps: true,
+    collection: 'fitmarket_settings'
+});
+
 export const User = mongoose.model('FitmarketUser', userSchema);
 export const TrainerRequest = mongoose.model('FitmarketTrainerRequest', trainerRequestSchema);
 export const Program = mongoose.model('FitmarketProgram', programSchema);
@@ -159,3 +168,4 @@ export const AIMessage = mongoose.model('FitmarketAIMessage', aiMessageSchema);
 export const News = mongoose.model('FitmarketNews', newsSchema);
 export const SupportMessage = mongoose.model('FitmarketSupportMessage', supportMessageSchema);
 export const ExerciseRecord = mongoose.model('FitmarketExerciseRecord', exerciseRecordSchema);
+export const Settings = mongoose.model('FitmarketSettings', settingsSchema);
