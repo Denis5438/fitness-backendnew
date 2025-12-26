@@ -87,6 +87,7 @@ const workoutLogSchema = new Schema({
     workout_title: { type: String, default: 'Тренировка' },
     exercises: { type: Array, default: [] }, // JSON array
     duration: { type: Number, default: 0 },
+    volume: { type: Number, default: 0 }, // Общий объём в кг
     notes: { type: String, default: '' },
     completed_at: { type: Date, default: Date.now },
 }, {

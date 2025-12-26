@@ -711,13 +711,14 @@ router.get('/workouts/history', authMiddleware, async (req, res) => {
 // POST /api/workouts/log - Сохранить тренировку
 router.post('/workouts/log', authMiddleware, async (req, res) => {
   try {
-    const { programId, workoutTitle, exercises, duration, notes, records } = req.body;
+    const { programId, workoutTitle, exercises, duration, volume, notes, records } = req.body;
 
     const result = await createWorkoutLog(req.user.telegramId, {
       programId,
       workoutTitle,
       exercises,
       duration,
+      volume,
       notes,
     });
 

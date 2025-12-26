@@ -452,6 +452,7 @@ export async function createWorkoutLog(telegramId, logData) {
     workout_title: logData.workoutTitle || 'Тренировка',
     exercises: logData.exercises || [],
     duration: logData.duration || 0,
+    volume: logData.volume || 0,
     notes: logData.notes || '',
     completed_at: new Date(),
   });
@@ -471,6 +472,7 @@ export async function getWorkoutLogs(telegramId, limit = 50) {
     workoutTitle: log.workout_title,
     exercises: log.exercises,
     duration: log.duration,
+    volume: log.volume || 0,
     notes: log.notes,
     completedAt: log.completed_at,
   }));
