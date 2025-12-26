@@ -55,9 +55,9 @@ bot.command('start', async (ctx) => {
     `Нажми кнопку ниже, чтобы открыть приложение! 👇`,
     {
       parse_mode: 'HTML',
-      ...Markup.keyboard([
+      ...Markup.inlineKeyboard([
         [Markup.button.webApp('🏋️ Открыть FitMarket', config.telegram.webappUrl)]
-      ]).resize()
+      ])
     }
   );
 });
