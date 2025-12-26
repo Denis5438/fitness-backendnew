@@ -31,7 +31,7 @@ import {
   updateLastSeenNews,
   resetUserAccount,
 } from '../database/users.js';
-import { Settings } from '../database/models.js';
+import { Settings, User } from '../database/models.js';
 
 const router = express.Router();
 
@@ -209,17 +209,47 @@ router.get('/user/me', authMiddleware, async (req, res) => {
 // POST /api/user/update - Обновить профиль
 router.post('/user/update', authMiddleware, async (req, res) => {
   try {
-    const { firstName, lastName } = req.body;
+    const { displayName, avatarUrl } = req.body;
 
-    const updated = await updateUser(req.user.telegramId, {
-      firstName: firstName || req.user.firstName,
-      lastName: lastName || req.user.lastName,
-    });
+    // Валидация displayName
+    if (displayName !== undefined) {
+      if (typeof displayName !== 'string' || displayName.trim().length < 2) {
+        return res.status(400).json({ error: 'Имя должно содержать минимум 2 символа' });
+      }
+      if (displayName.length > 50) {
+        return res.status(400).json({ error: 'Имя слишком длинное (максимум 50 символов)' });
+      }
+    }
 
+    // Валидация avatarUrl (Base64 или URL)
+    if (avatarUrl !== undefined) {
+      if (typeof avatarUrl !== 'string') {
+        return res.status(400).json({ error: 'Некорректный формат аватара' });
+      }
+      // Проверяем размер Base64 (примерно 5MB в base64 = ~6.6MB)
+      if (avatarUrl.length > 7000000) {
+        return res.status(400).json({ error: 'Файл слишком большой (максимум 5MB)' });
+      }
+    }
+
+    // Обновляем только переданные поля
+    const updateData = {};
+    if (displayName !== undefined) updateData.display_name = displayName.trim();
+    if (avatarUrl !== undefined) updateData.avatar_url = avatarUrl;
+
+    if (Object.keys(updateData).length > 0) {
+      await User.updateOne(
+        { telegram_id: req.user.telegramId },
+        { $set: updateData }
+      );
+    }
+
+    const updated = await getUser(req.user.telegramId);
+    console.log(`✅ Профиль обновлён для ${req.user.telegramId}`);
     res.json({ success: true, user: updated });
   } catch (error) {
     console.error('Error updating user:', error);
-    res.status(500).json({ error: 'Database error' });
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

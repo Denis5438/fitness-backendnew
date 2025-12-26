@@ -47,6 +47,8 @@ export async function getUser(telegramId) {
     username: user.username,
     firstName: user.first_name,
     lastName: user.last_name,
+    displayName: user.display_name || '', // Кастомное имя
+    avatarUrl: user.avatar_url || '', // Аватар
     role: primaryRole, // Главная роль для обратной совместимости
     roles: roles, // Полный массив ролей
     subscriptionTier: user.subscription_tier,

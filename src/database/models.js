@@ -11,6 +11,8 @@ const userSchema = new Schema({
     username: { type: String, default: '' },
     first_name: { type: String, default: '' },
     last_name: { type: String, default: '' },
+    display_name: { type: String, default: '' }, // Кастомное имя пользователя
+    avatar_url: { type: String, default: '' }, // URL или Base64 аватара
     // Старое поле role для обратной совместимости (будет мигрировано)
     role: {
         type: String,
