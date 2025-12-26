@@ -26,6 +26,9 @@ bot.command('start', async (ctx) => {
   const firstName = escapeHtml(ctx.from.first_name) || 'Атлет';
   const telegramId = ctx.from.id;
 
+  // Логируем какой URL используется для WebApp кнопки
+  console.log('🌐 WEBAPP_URL being used:', config.telegram.webappUrl);
+
   // Создаём пользователя если его нет
   let user = await getUser(telegramId);
   if (!user) {
