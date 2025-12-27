@@ -341,14 +341,14 @@ router.post('/settings/new-year-theme', authMiddleware, async (req, res) => {
 // ==========================================
 
 // POST /api/trainer/request - Подать заявку на тренера
-router.post('/trainer/request', authMiddleware, (req, res) => {
+router.post('/trainer/request', authMiddleware, async (req, res) => {
   const { bio, experience, specialization } = req.body;
 
   if (req.user.role === 'TRAINER') {
     return res.status(400).json({ error: 'Вы уже являетесь тренером' });
   }
 
-  const existingRequest = getTrainerRequestByUser(req.user.telegramId);
+  const existingRequest = await getTrainerRequestByUser(req.user.telegramId);
   if (existingRequest) {
     return res.status(400).json({ error: 'У вас уже есть активная заявка на рассмотрении' });
   }
@@ -357,7 +357,7 @@ router.post('/trainer/request', authMiddleware, (req, res) => {
     return res.status(400).json({ error: 'Заполните все поля' });
   }
 
-  const request = createTrainerRequest(req.user.telegramId, {
+  const request = await createTrainerRequest(req.user.telegramId, {
     bio,
     experience,
     specialization,
