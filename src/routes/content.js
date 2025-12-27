@@ -446,19 +446,27 @@ router.get('/roles', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
+        // Ищем пользователей у которых в массиве roles есть MODERATOR, TRAINER или ADMIN
         const staff = await User.find({
-            role: { $in: ['MODERATOR', 'TRAINER', 'ADMIN'] },
+            $or: [
+                { roles: { $in: ['MODERATOR', 'TRAINER', 'ADMIN'] } },
+                { role: { $in: ['MODERATOR', 'TRAINER', 'ADMIN'] } }
+            ]
         })
-            .sort({ role: 1, created_at: 1 })
+            .sort({ created_at: 1 })
             .lean();
 
         res.json(
             staff.map((u) => ({
+                telegramId: u.telegram_id,
                 telegram_id: u.telegram_id,
+                firstName: u.first_name,
                 first_name: u.first_name,
+                lastName: u.last_name,
                 last_name: u.last_name,
                 username: u.username,
                 role: u.role,
+                roles: u.roles || [u.role], // Возвращаем массив ролей
             }))
         );
     } catch (error) {
