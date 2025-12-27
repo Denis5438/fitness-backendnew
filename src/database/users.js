@@ -244,7 +244,8 @@ export async function createTrainerRequest(telegramId, requestData) {
 }
 
 export async function getTrainerRequestByUser(telegramId) {
-  return TrainerRequest.findOne({ telegram_id: telegramId }).lean();
+  // Возвращаем только PENDING заявки, старые одобренные/отклонённые не блокируют
+  return TrainerRequest.findOne({ telegram_id: telegramId, status: 'PENDING' }).lean();
 }
 
 export async function getLastTrainerRequest(telegramId) {
