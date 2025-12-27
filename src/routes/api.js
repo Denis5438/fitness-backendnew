@@ -759,8 +759,23 @@ router.get('/programs/my', authMiddleware, async (req, res) => {
 // POST /api/programs/my - Сохранить личную программу
 router.post('/programs/my', authMiddleware, async (req, res) => {
   try {
-    const { title, exercises } = req.body;
+    const { id, title, exercises } = req.body;
+
+    // Проверяем, существует ли уже программа с таким ID
+    const existingProgram = id ? await getProgram(id) : null;
+
+    if (existingProgram && existingProgram.authorId === req.user.telegramId) {
+      // Обновляем существующую программу
+      const updated = await updateProgram(id, {
+        title,
+        workouts: exercises,
+      });
+      return res.json({ success: true, program: updated });
+    }
+
+    // Создаём новую программу
     const program = await createProgram(req.user.telegramId, {
+      id, // Используем переданный ID
       title,
       workouts: exercises,
       isPersonal: true,

@@ -94,6 +94,8 @@ const workoutLogSchema = new Schema({
     timestamps: false,
     collection: 'fitmarket_workout_logs'
 });
+// Compound index for history queries (sorted by date)
+workoutLogSchema.index({ telegram_id: 1, completed_at: -1 });
 
 // ==================== PURCHASE ====================
 const purchaseSchema = new Schema({
@@ -144,6 +146,8 @@ const supportMessageSchema = new Schema({
     timestamps: false,
     collection: 'fitmarket_support_messages'
 });
+// Compound index for chat queries
+supportMessageSchema.index({ to_user_id: 1, created_at: 1 });
 
 // ==================== EXERCISE RECORD ====================
 const exerciseRecordSchema = new Schema({
