@@ -353,14 +353,11 @@ router.post('/trainer/request', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'У вас уже есть активная заявка на рассмотрении' });
   }
 
-  if (!bio || !experience || !specialization) {
-    return res.status(400).json({ error: 'Заполните все поля' });
-  }
-
+  // Поля необязательные — модератор просто одобряет или отклоняет
   const request = await createTrainerRequest(req.user.telegramId, {
-    bio,
-    experience,
-    specialization,
+    bio: bio || '',
+    experience: experience || '',
+    specialization: specialization || '',
   });
 
   res.status(201).json({
