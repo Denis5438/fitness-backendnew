@@ -288,8 +288,8 @@ export async function approveTrainerRequest(requestId, reviewerId) {
     }
   );
 
-  // Update user role
-  await setUserRole(request.telegram_id, 'TRAINER');
+  // Add TRAINER role (не перезаписывает существующие роли)
+  await addRole(request.telegram_id, 'TRAINER');
 
   return TrainerRequest.findOne({ id: requestId }).lean();
 }
