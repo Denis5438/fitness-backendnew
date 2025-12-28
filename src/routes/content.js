@@ -265,7 +265,27 @@ router.post('/trainer-requests/:id/reject', authMiddleware, async (req, res) => 
         }
 
         const { reason } = req.body;
+
+        // Получаем заявку чтобы узнать telegram_id пользователя
+        const { TrainerRequest } = await import('../database/models.js');
+        const request = await TrainerRequest.findOne({ id: req.params.id }).lean();
+
+        if (!request) {
+            return res.status(404).json({ error: 'Заявка не найдена' });
+        }
+
         const result = await rejectTrainerRequest(req.params.id, req.user.telegramId, reason);
+
+        // Отправляем уведомление пользователю в чат поддержки
+        const rejectMessage = `❌ ОТКАЗ В РОЛИ ТРЕНЕРА\n\nВаша заявка на роль тренера была отклонена.${reason ? `\n\n📝 Причина: ${reason}` : ''}\n\nЕсли у вас есть вопросы, напишите нам.`;
+
+        await createSupportMessage(
+            0, // от поддержки
+            '🔴 Модерация',
+            'system',
+            request.telegram_id, // кому
+            rejectMessage
+        );
 
         res.json({ success: true, request: result });
     } catch (error) {
