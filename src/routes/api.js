@@ -342,7 +342,7 @@ router.post('/settings/new-year-theme', authMiddleware, async (req, res) => {
 
 // POST /api/trainer/request - Подать заявку на тренера
 router.post('/trainer/request', authMiddleware, async (req, res) => {
-  const { bio, experience, specialization } = req.body;
+  const { bio, experience, specialization, certPhotoUrl } = req.body;
 
   if (req.user.role === 'TRAINER') {
     return res.status(400).json({ error: 'Вы уже являетесь тренером' });
@@ -358,6 +358,7 @@ router.post('/trainer/request', authMiddleware, async (req, res) => {
     bio: bio || '',
     experience: experience || '',
     specialization: specialization || '',
+    certPhotoUrl: certPhotoUrl || '',
   });
 
   res.status(201).json({

@@ -237,6 +237,7 @@ export async function createTrainerRequest(telegramId, requestData) {
     bio: requestData.bio || '',
     experience: requestData.experience || '',
     specialization: requestData.specialization || '',
+    cert_photo_url: requestData.certPhotoUrl || '',
     status: 'PENDING',
   });
 

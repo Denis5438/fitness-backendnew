@@ -46,6 +46,7 @@ const trainerRequestSchema = new Schema({
     bio: { type: String, default: '' },
     experience: { type: String, default: '' },
     specialization: { type: String, default: '' },
+    cert_photo_url: { type: String, default: '' }, // Фото сертификата МС/КМС
     status: {
         type: String,
         default: 'PENDING',
