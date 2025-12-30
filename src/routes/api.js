@@ -148,12 +148,14 @@ async function authMiddleware(req, res, next) {
       });
     }
 
-    // FORCE ADMIN ROLE: Если ID совпадает с конфигом, но роль не ADMIN — обновляем
-    console.log('🔍 Auth check:', { userId: user.telegramId, adminId: config.adminTelegramId, userRole: user.role });
-    if (config.adminTelegramId && user.telegramId === config.adminTelegramId && user.role !== 'ADMIN') {
+    // FORCE ADMIN ROLE: Если ID совпадает с конфигом, но роль ADMIN отсутствует — добавляем
+    const userRoles = user.roles || [];
+    console.log('🔍 Auth check:', { userId: user.telegramId, adminId: config.adminTelegramId, userRoles });
+    if (config.adminTelegramId && user.telegramId === config.adminTelegramId && !userRoles.includes('ADMIN')) {
       console.log(`👑 Auto-promoting user ${user.telegramId} to ADMIN`);
-      await setUserRole(user.telegramId, 'ADMIN');
-      user.role = 'ADMIN'; // Обновляем объект в памяти
+      const { addRole } = await import('../database/users.js');
+      await addRole(user.telegramId, 'ADMIN');
+      user.roles = [...userRoles, 'ADMIN']; // Обновляем объект в памяти
     }
 
     req.telegramUser = telegramUser;
@@ -168,21 +170,42 @@ async function authMiddleware(req, res, next) {
 // Экспортируем authMiddleware для использования в других роутах
 export { authMiddleware };
 
-// Проверка роли модератора
+// ==========================================
+// ХЕЛПЕРЫ ДЛЯ ПРОВЕРКИ РОЛЕЙ (поддержка массива roles[])
+// ==========================================
+
+// Проверить одну роль
+function hasRole(user, role) {
+  // Поддержка и старого поля role, и нового roles[]
+  if (user.roles && Array.isArray(user.roles)) {
+    return user.roles.includes(role);
+  }
+  return user.role === role;
+}
+
+// Проверить любую из ролей
+function hasAnyRole(user, roles) {
+  return roles.some(role => hasRole(user, role));
+}
+
+// Middleware: Проверка роли модератора
 function requireModerator(req, res, next) {
-  if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+  if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
     return res.status(403).json({ error: 'Access denied. Moderator role required.' });
   }
   next();
 }
 
-// Проверка роли тренера
+// Middleware: Проверка роли тренера
 function requireTrainer(req, res, next) {
-  if (req.user.role !== 'TRAINER' && req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+  if (!hasAnyRole(req.user, ['TRAINER', 'MODERATOR', 'ADMIN'])) {
     return res.status(403).json({ error: 'Access denied. Trainer role required.' });
   }
   next();
 }
+
+// Экспортируем хелперы для использования в других файлах
+export { hasRole, hasAnyRole };
 
 // ==========================================
 // USER API

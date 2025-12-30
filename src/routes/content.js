@@ -1,6 +1,6 @@
 // Content Routes - MongoDB Version
 import { Router } from 'express';
-import { authMiddleware } from './api.js';
+import { authMiddleware, hasAnyRole } from './api.js';
 import {
     News,
     Program,
@@ -59,7 +59,7 @@ router.get('/news', async (req, res) => {
 // Создать новость (только модераторы)
 router.post('/news', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -91,7 +91,7 @@ router.post('/news', authMiddleware, async (req, res) => {
 // Удалить новость
 router.delete('/news/:id', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -203,7 +203,7 @@ router.delete('/programs/:id', authMiddleware, async (req, res) => {
 // Получить все заявки (для модераторов)
 router.get('/trainer-requests', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -241,7 +241,7 @@ router.post('/trainer-requests', authMiddleware, async (req, res) => {
 // Одобрить заявку
 router.post('/trainer-requests/:id/approve', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -260,7 +260,7 @@ router.post('/trainer-requests/:id/approve', authMiddleware, async (req, res) =>
 // Отклонить заявку
 router.post('/trainer-requests/:id/reject', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -305,7 +305,7 @@ router.post('/trainer-requests/:id/reject', authMiddleware, async (req, res) => 
 // Получить все сообщения (для модераторов)
 router.get('/support/messages', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -320,7 +320,7 @@ router.get('/support/messages', authMiddleware, async (req, res) => {
 // Получить список пользователей с чатами
 router.get('/support/users', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
@@ -338,7 +338,7 @@ router.get('/support/messages/:userId', authMiddleware, async (req, res) => {
         const { userId } = req.params;
 
         // Пользователь может видеть только свои сообщения
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             if (parseInt(userId) !== req.user.telegramId) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
@@ -389,7 +389,7 @@ router.post('/support/messages', authMiddleware, async (req, res) => {
 // Ответить пользователю (от модератора)
 router.post('/support/reply/:userId', authMiddleware, async (req, res) => {
     try {
-        if (req.user.role !== 'MODERATOR' && req.user.role !== 'ADMIN') {
+        if (!hasAnyRole(req.user, ['MODERATOR', 'ADMIN'])) {
             return res.status(403).json({ error: 'Доступ запрещён' });
         }
 
