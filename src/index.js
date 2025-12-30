@@ -34,6 +34,41 @@ app.use((req, res, next) => {
   next();
 });
 
+// Простой rate limiter (100 запросов в минуту на IP)
+const rateLimitStore = new Map();
+const RATE_LIMIT = 100; // запросов
+const RATE_WINDOW = 60000; // 1 минута
+
+app.use((req, res, next) => {
+  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const now = Date.now();
+
+  if (!rateLimitStore.has(ip)) {
+    rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_WINDOW });
+  } else {
+    const record = rateLimitStore.get(ip);
+    if (now > record.resetTime) {
+      record.count = 1;
+      record.resetTime = now + RATE_WINDOW;
+    } else {
+      record.count++;
+      if (record.count > RATE_LIMIT) {
+        console.warn(`⚠️ Rate limit exceeded for IP: ${ip}`);
+        return res.status(429).json({ error: 'Too many requests. Try again later.' });
+      }
+    }
+  }
+  next();
+});
+
+// Очистка старых записей каждые 5 минут
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitStore.entries()) {
+    if (now > record.resetTime + 300000) rateLimitStore.delete(ip);
+  }
+}, 300000);
+
 // API Routes
 app.use('/api', apiRouter);
 app.use('/api/crypto', cryptoRouter);
