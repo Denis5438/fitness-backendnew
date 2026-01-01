@@ -237,10 +237,6 @@ async function handleCryptoWebhook(update) {
 
   // Получаем сохранённые данные
   const pending = pendingInvoices.get(invoiceId);
-  if (!pending) {
-    console.warn(`⚠️ Неизвестный инвойс: ${invoiceId}`);
-    return null;
-  }
 
   // Парсим payload
   let payloadData = {};
@@ -250,17 +246,25 @@ async function handleCryptoWebhook(update) {
     console.warn('⚠️ Ошибка парсинга payload:', e.message);
   }
 
+  if (!pending && !payloadData?.type) {
+    console.warn(`⚠️ Неизвестный инвойс: ${invoiceId}`);
+    return null;
+  }
+
   // Удаляем из ожидающих
-  pendingInvoices.delete(invoiceId);
+  if (pending) pendingInvoices.delete(invoiceId);
+
+  const amount = parseFloat(invoice.amount);
+  const fallbackAmount = parseFloat(payloadData.amountUSD || payloadData.priceUSD || '0');
 
   return {
-    type: pending.type,
+    type: pending?.type || payloadData.type,
     invoiceId,
-    userId: pending.userId,
-    amount: parseFloat(invoice.amount),
+    userId: pending?.userId || payloadData.userId,
+    amount: Number.isFinite(amount) ? amount : fallbackAmount,
     asset: invoice.asset,
-    programId: pending.programId,
-    trainerId: pending.trainerId,
+    programId: pending?.programId || payloadData.programId,
+    trainerId: pending?.trainerId || payloadData.trainerId,
     paidAt: invoice.paid_at,
   };
 }
@@ -274,11 +278,11 @@ async function getCryptoBalance() {
 }
 
 // Вывод средств тренеру
-async function withdrawToTrainer(trainerId, asset, amount, comment = 'Вывод средств FitMarket') {
+async function withdrawToTrainer(trainerId, asset, amount, comment = 'Вывод средств FitMarket', spendIdOverride = '') {
   const api = getCryptoPay();
   if (!api) throw new Error('CryptoBot не настроен');
 
-  const spendId = `withdraw_${trainerId}_${Date.now()}`;
+  const spendId = spendIdOverride || `withdraw_${trainerId}_${Date.now()}`;
 
   return api.transfer({
     userId: trainerId,

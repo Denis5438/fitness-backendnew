@@ -6,6 +6,7 @@ import apiRouter from './routes/api.js';
 import { initCryptoPay } from './cryptoBot.js';
 import cryptoRouter from './routes/crypto.js';
 import contentRouter from './routes/content.js';
+import { WithdrawalRequest } from './database/models.js';
 
 const app = express();
 
@@ -38,6 +39,8 @@ app.use((req, res, next) => {
 const rateLimitStore = new Map();
 const RATE_LIMIT = 100; // запросов
 const RATE_WINDOW = 60000; // 1 минута
+const WITHDRAWAL_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000; // 10 минут
+const WITHDRAWAL_PROCESSING_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
 
 app.use((req, res, next) => {
   const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
@@ -100,6 +103,28 @@ async function start() {
     // Подключение к MongoDB
     const { connectMongoDB } = await import('./database/mongodb.js');
     await connectMongoDB();
+
+    setInterval(async () => {
+      try {
+        const cutoff = new Date(Date.now() - WITHDRAWAL_PROCESSING_TIMEOUT_MS);
+        const result = await WithdrawalRequest.updateMany(
+          {
+            status: 'PROCESSING',
+            $or: [
+              { updated_at: { $lt: cutoff } },
+              { updated_at: { $exists: false }, created_at: { $lt: cutoff } },
+            ],
+          },
+          { $set: { status: 'PENDING', updated_at: new Date() } }
+        );
+        const modified = result.modifiedCount ?? result.nModified ?? 0;
+        if (modified > 0) {
+          console.warn(`⚠️ Возвращено в PENDING: ${modified} заявок на вывод (таймаут)`);
+        }
+      } catch (error) {
+        console.error('❌ Ошибка очистки зависших выводов:', error);
+      }
+    }, WITHDRAWAL_PROCESSING_CHECK_INTERVAL_MS);
 
     // Инициализация CryptoBot
     initCryptoPay(config.cryptoBot?.token);

@@ -779,6 +779,16 @@ export async function updateUserBalance(telegramId, amount) {
   return true;
 }
 
+export async function debitUserBalanceIfEnough(telegramId, amount) {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const result = await User.updateOne(
+    { telegram_id: telegramId, balance: { $gte: amount } },
+    { $inc: { balance: -amount } }
+  );
+  const modified = result.modifiedCount ?? result.nModified ?? 0;
+  return modified > 0;
+}
+
 export async function setUserBalance(telegramId, balance) {
   await User.updateOne(
     { telegram_id: telegramId },

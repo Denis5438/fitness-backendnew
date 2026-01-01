@@ -30,10 +30,14 @@ import {
   saveExerciseRecords,
   updateLastSeenNews,
   resetUserAccount,
+  updateUserBalance,
+  debitUserBalanceIfEnough,
 } from '../database/users.js';
 import { Settings, User } from '../database/models.js';
 
 const router = express.Router();
+
+const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 // ==========================================
 // MIDDLEWARE: Валидация Telegram initData с HMAC-SHA256
@@ -72,10 +76,10 @@ function validateTelegramInitData(initDataString, botToken) {
       return null;
     }
 
-    // Проверяем auth_date (не старше 1 часа)
+    // Проверяем auth_date (не старше 24 часов)
     const authDate = parseInt(params.get('auth_date') || '0');
     const now = Math.floor(Date.now() / 1000);
-    if (now - authDate > 3600) {
+    if (now - authDate > 86400) {
       console.warn('⚠️ Telegram auth data expired');
       return null;
     }
@@ -111,16 +115,22 @@ async function authMiddleware(req, res, next) {
 
   let telegramUser = null;
 
-  // В production валидируем подпись, в development просто парсим
-  if (config.nodeEnv === 'production' && config.telegram.botToken) {
+  const allowInsecureInitData = config.nodeEnv !== 'production' && process.env.ALLOW_INSECURE_INITDATA === 'true';
+
+  if (!config.telegram.botToken) {
+    if (config.nodeEnv === 'production') {
+      return res.status(500).json({ error: 'Server misconfigured: TELEGRAM_BOT_TOKEN missing' });
+    }
+    telegramUser = parseInitData(initData);
+  } else if (allowInsecureInitData) {
+    telegramUser = parseInitData(initData);
+  } else {
+    // Валидируем подпись, если есть botToken
     telegramUser = validateTelegramInitData(initData, config.telegram.botToken);
     if (!telegramUser) {
       console.log('⚠️ initData validation failed. NODE_ENV:', config.nodeEnv);
       console.log('⚠️ initData (first 100 chars):', initData.substring(0, 100));
     }
-  } else {
-    // В development режиме просто парсим данные без проверки
-    telegramUser = parseInitData(initData);
   }
 
   if (!telegramUser || !telegramUser.id) {
@@ -148,6 +158,7 @@ async function authMiddleware(req, res, next) {
       const { addRole } = await import('../database/users.js');
       await addRole(user.telegramId, 'ADMIN');
       user.roles = [...userRoles, 'ADMIN']; // Обновляем объект в памяти
+      user.role = 'ADMIN';
     }
 
     req.telegramUser = telegramUser;
@@ -328,6 +339,42 @@ router.get('/settings/new-year-theme', async (req, res) => {
   }
 });
 
+// GET /api/settings/withdrawal-fee - Получить комиссию на вывод (публичный)
+router.get('/settings/withdrawal-fee', async (req, res) => {
+  try {
+    const setting = await Settings.findOne({ key: 'withdrawalFeePercent' });
+    res.json({ percent: setting?.value ?? 3 });
+  } catch (error) {
+    console.error('Error getting withdrawal fee:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// POST /api/settings/withdrawal-fee - Обновить комиссию (только админ)
+router.post('/settings/withdrawal-fee', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+
+    const percent = Number(req.body.percent);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 50) {
+      return res.status(400).json({ error: 'Некорректное значение комиссии' });
+    }
+
+    await Settings.updateOne(
+      { key: 'withdrawalFeePercent' },
+      { $set: { value: percent } },
+      { upsert: true }
+    );
+
+    res.json({ success: true, percent });
+  } catch (error) {
+    console.error('Error setting withdrawal fee:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 // POST /api/settings/new-year-theme - Установить статус новогодней темы (только админ/модератор)
 router.post('/settings/new-year-theme', authMiddleware, async (req, res) => {
   try {
@@ -384,8 +431,8 @@ router.post('/trainer/request', authMiddleware, async (req, res) => {
 });
 
 // GET /api/trainer/request/status - Статус своей заявки
-router.get('/trainer/request/status', authMiddleware, (req, res) => {
-  const request = getLastTrainerRequest(req.user.telegramId);
+router.get('/trainer/request/status', authMiddleware, async (req, res) => {
+  const request = await getLastTrainerRequest(req.user.telegramId);
 
   res.json({
     hasRequest: !!request,
@@ -398,12 +445,13 @@ router.get('/trainer/request/status', authMiddleware, (req, res) => {
 // ==========================================
 
 // GET /api/moderator/requests - Список заявок на тренера
-router.get('/moderator/requests', authMiddleware, requireModerator, (req, res) => {
-  const requests = getPendingTrainerRequests();
+router.get('/moderator/requests', authMiddleware, requireModerator, async (req, res) => {
+  const requests = await getPendingTrainerRequests();
 
   // Добавляем информацию о пользователях
-  const enrichedRequests = requests.map(r => {
-    const user = getUser(r.telegramId);
+  const enrichedRequests = await Promise.all(requests.map(async (r) => {
+    const requesterId = r.telegram_id ?? r.telegramId;
+    const user = r.user || (requesterId ? await getUser(requesterId) : null);
     return {
       ...r,
       user: user ? {
@@ -412,7 +460,7 @@ router.get('/moderator/requests', authMiddleware, requireModerator, (req, res) =
         username: user.username,
       } : null,
     };
-  });
+  }));
 
   res.json({
     success: true,
@@ -422,10 +470,10 @@ router.get('/moderator/requests', authMiddleware, requireModerator, (req, res) =
 });
 
 // POST /api/moderator/requests/:id/approve - Одобрить заявку
-router.post('/moderator/requests/:id/approve', authMiddleware, requireModerator, (req, res) => {
+router.post('/moderator/requests/:id/approve', authMiddleware, requireModerator, async (req, res) => {
   const { id } = req.params;
 
-  const request = approveTrainerRequest(id, req.user.telegramId);
+  const request = await approveTrainerRequest(id, req.user.telegramId);
 
   if (!request) {
     return res.status(404).json({ error: 'Заявка не найдена' });
@@ -439,11 +487,11 @@ router.post('/moderator/requests/:id/approve', authMiddleware, requireModerator,
 });
 
 // POST /api/moderator/requests/:id/reject - Отклонить заявку
-router.post('/moderator/requests/:id/reject', authMiddleware, requireModerator, (req, res) => {
+router.post('/moderator/requests/:id/reject', authMiddleware, requireModerator, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
 
-  const request = rejectTrainerRequest(id, req.user.telegramId, reason);
+  const request = await rejectTrainerRequest(id, req.user.telegramId, reason);
 
   if (!request) {
     return res.status(404).json({ error: 'Заявка не найдена' });
@@ -463,8 +511,8 @@ router.post('/moderator/requests/:id/reject', authMiddleware, requireModerator, 
 
 // GET /api/programs/my/purchased - Мои купленные программы
 // ВАЖНО: Этот роут должен быть ПЕРЕД /programs/:id
-router.get('/programs/my/purchased', authMiddleware, (req, res) => {
-  const programs = getPurchasedPrograms(req.user.telegramId);
+router.get('/programs/my/purchased', authMiddleware, async (req, res) => {
+  const programs = await getPurchasedPrograms(req.user.telegramId);
 
   res.json({
     success: true,
@@ -474,8 +522,8 @@ router.get('/programs/my/purchased', authMiddleware, (req, res) => {
 
 // GET /api/programs/my/personal - Мои личные программы
 // ВАЖНО: Этот роут должен быть ПЕРЕД /programs/:id
-router.get('/programs/my/personal', authMiddleware, (req, res) => {
-  const programs = getPersonalPrograms(req.user.telegramId);
+router.get('/programs/my/personal', authMiddleware, async (req, res) => {
+  const programs = await getPersonalPrograms(req.user.telegramId);
 
   res.json({
     success: true,
@@ -484,14 +532,14 @@ router.get('/programs/my/personal', authMiddleware, (req, res) => {
 });
 
 // POST /api/programs/my/personal - Создать личную программу
-router.post('/programs/my/personal', authMiddleware, (req, res) => {
+router.post('/programs/my/personal', authMiddleware, async (req, res) => {
   const { title, description, workouts } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: 'Название программы обязательно' });
   }
 
-  const program = createProgram(req.user.telegramId, {
+  const program = await createProgram(req.user.telegramId, {
     title,
     description,
     workouts: workouts || [],
@@ -505,15 +553,15 @@ router.post('/programs/my/personal', authMiddleware, (req, res) => {
 });
 
 // PUT /api/programs/my/personal/:id - Обновить личную программу
-router.put('/programs/my/personal/:id', authMiddleware, (req, res) => {
+router.put('/programs/my/personal/:id', authMiddleware, async (req, res) => {
   const { id } = req.params;
-  const program = getProgram(id);
+  const program = await getProgram(id);
 
   if (!program || program.authorId !== req.user.telegramId || !program.isPersonal) {
     return res.status(404).json({ error: 'Программа не найдена' });
   }
 
-  const updated = updateProgram(id, req.body);
+  const updated = await updateProgram(id, req.body);
 
   res.json({
     success: true,
@@ -522,14 +570,20 @@ router.put('/programs/my/personal/:id', authMiddleware, (req, res) => {
 });
 
 // GET /api/programs - Список опубликованных программ (маркетплейс)
-router.get('/programs', authMiddleware, (req, res) => {
-  const programs = getPublishedPrograms();
+router.get('/programs', authMiddleware, async (req, res) => {
+  const programs = await getPublishedPrograms();
 
   // Добавляем информацию о покупке
-  const enrichedPrograms = programs.map(p => ({
-    ...p,
-    isPurchased: hasPurchased(req.user.telegramId, p.id),
-    author: getUser(p.authorId),
+  const enrichedPrograms = await Promise.all(programs.map(async (p) => {
+    const [isPurchased, author] = await Promise.all([
+      hasPurchased(req.user.telegramId, p.id),
+      getUser(p.authorId),
+    ]);
+    return {
+      ...p,
+      isPurchased,
+      author,
+    };
   }));
 
   res.json({
@@ -540,16 +594,16 @@ router.get('/programs', authMiddleware, (req, res) => {
 
 // GET /api/programs/:id - Детали программы
 // ВАЖНО: Динамический роут ПОСЛЕ специфичных (/my/*)
-router.get('/programs/:id', authMiddleware, (req, res) => {
+router.get('/programs/:id', authMiddleware, async (req, res) => {
   const { id } = req.params;
-  const program = getProgram(id);
+  const program = await getProgram(id);
 
   if (!program) {
     return res.status(404).json({ error: 'Программа не найдена' });
   }
 
   const isOwner = program.authorId === req.user.telegramId;
-  const isPurchased = hasPurchased(req.user.telegramId, id);
+  const isPurchased = await hasPurchased(req.user.telegramId, id);
   const canView = isOwner || isPurchased || program.price === 0;
 
   res.json({
@@ -563,21 +617,53 @@ router.get('/programs/:id', authMiddleware, (req, res) => {
 });
 
 // POST /api/programs/:id/purchase - Купить программу
-router.post('/programs/:id/purchase', authMiddleware, (req, res) => {
+router.post('/programs/:id/purchase', authMiddleware, async (req, res) => {
   const { id } = req.params;
-  const program = getProgram(id);
+  const program = await getProgram(id);
 
   if (!program) {
     return res.status(404).json({ error: 'Программа не найдена' });
   }
 
-  if (hasPurchased(req.user.telegramId, id)) {
+  if (await hasPurchased(req.user.telegramId, id)) {
     return res.status(400).json({ error: 'Вы уже приобрели эту программу' });
   }
 
-  // TODO: Интеграция с платёжной системой
-  // Пока просто добавляем в купленные
-  purchaseProgram(req.user.telegramId, id);
+  const price = Number(program.price) || 0;
+  let debited = false;
+  try {
+    if (price > 0) {
+      const debitedOk = await debitUserBalanceIfEnough(req.user.telegramId, price);
+      if (!debitedOk) {
+        return res.status(400).json({ error: 'Недостаточно средств' });
+      }
+      debited = true;
+    }
+
+    const purchaseResult = await purchaseProgram(req.user.telegramId, id);
+    if (!purchaseResult.success) {
+      if (debited) {
+        await updateUserBalance(req.user.telegramId, price);
+      }
+      return res.status(400).json({ error: 'Вы уже приобрели эту программу' });
+    }
+
+    if (price > 0) {
+      const trainerShare = roundMoney(price * 0.9);
+      const adminShare = roundMoney(price - trainerShare);
+      if (program.authorId) {
+        await updateUserBalance(program.authorId, trainerShare);
+      }
+      if (adminShare > 0 && config.adminTelegramId) {
+        await updateUserBalance(config.adminTelegramId, adminShare);
+      }
+    }
+  } catch (error) {
+    if (debited) {
+      await updateUserBalance(req.user.telegramId, price);
+    }
+    throw error;
+  }
 
   res.json({
     success: true,
@@ -590,8 +676,8 @@ router.post('/programs/:id/purchase', authMiddleware, (req, res) => {
 // ==========================================
 
 // GET /api/trainer/programs - Мои программы (тренер)
-router.get('/trainer/programs', authMiddleware, requireTrainer, (req, res) => {
-  const programs = getTrainerPrograms(req.user.telegramId);
+router.get('/trainer/programs', authMiddleware, requireTrainer, async (req, res) => {
+  const programs = await getTrainerPrograms(req.user.telegramId);
 
   res.json({
     success: true,
@@ -600,14 +686,14 @@ router.get('/trainer/programs', authMiddleware, requireTrainer, (req, res) => {
 });
 
 // POST /api/trainer/programs - Создать программу (тренер)
-router.post('/trainer/programs', authMiddleware, requireTrainer, (req, res) => {
+router.post('/trainer/programs', authMiddleware, requireTrainer, async (req, res) => {
   const { title, description, category, difficulty, durationWeeks, price, workouts } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: 'Название программы обязательно' });
   }
 
-  const program = createProgram(req.user.telegramId, {
+  const program = await createProgram(req.user.telegramId, {
     title,
     description,
     category,
@@ -625,15 +711,15 @@ router.post('/trainer/programs', authMiddleware, requireTrainer, (req, res) => {
 });
 
 // PUT /api/trainer/programs/:id - Обновить программу
-router.put('/trainer/programs/:id', authMiddleware, requireTrainer, (req, res) => {
+router.put('/trainer/programs/:id', authMiddleware, requireTrainer, async (req, res) => {
   const { id } = req.params;
-  const program = getProgram(id);
+  const program = await getProgram(id);
 
   if (!program || program.authorId !== req.user.telegramId) {
     return res.status(404).json({ error: 'Программа не найдена' });
   }
 
-  const updated = updateProgram(id, req.body);
+  const updated = await updateProgram(id, req.body);
 
   res.json({
     success: true,
@@ -642,9 +728,9 @@ router.put('/trainer/programs/:id', authMiddleware, requireTrainer, (req, res) =
 });
 
 // POST /api/trainer/programs/:id/publish - Опубликовать программу
-router.post('/trainer/programs/:id/publish', authMiddleware, requireTrainer, (req, res) => {
+router.post('/trainer/programs/:id/publish', authMiddleware, requireTrainer, async (req, res) => {
   const { id } = req.params;
-  const program = getProgram(id);
+  const program = await getProgram(id);
 
   if (!program || program.authorId !== req.user.telegramId) {
     return res.status(404).json({ error: 'Программа не найдена' });
@@ -654,7 +740,7 @@ router.post('/trainer/programs/:id/publish', authMiddleware, requireTrainer, (re
     return res.status(400).json({ error: 'Добавьте хотя бы одну тренировку' });
   }
 
-  const updated = updateProgram(id, { isPublished: true });
+  const updated = await updateProgram(id, { isPublished: true });
 
   res.json({
     success: true,
@@ -668,8 +754,8 @@ router.post('/trainer/programs/:id/publish', authMiddleware, requireTrainer, (re
 // ==========================================
 
 // GET /api/workouts - История тренировок
-router.get('/workouts', authMiddleware, (req, res) => {
-  const logs = getWorkoutLogs(req.user.telegramId);
+router.get('/workouts', authMiddleware, async (req, res) => {
+  const logs = await getWorkoutLogs(req.user.telegramId);
 
   res.json({
     success: true,
@@ -678,14 +764,14 @@ router.get('/workouts', authMiddleware, (req, res) => {
 });
 
 // POST /api/workouts - Записать тренировку
-router.post('/workouts', authMiddleware, (req, res) => {
+router.post('/workouts', authMiddleware, async (req, res) => {
   const { programId, workoutTitle, exercises, duration, notes } = req.body;
 
   if (!workoutTitle) {
     return res.status(400).json({ error: 'Название тренировки обязательно' });
   }
 
-  const log = createWorkoutLog(req.user.telegramId, {
+  const log = await createWorkoutLog(req.user.telegramId, {
     programId,
     workoutTitle,
     exercises: exercises || [],

@@ -150,6 +150,47 @@ const supportMessageSchema = new Schema({
 // Compound index for chat queries
 supportMessageSchema.index({ to_user_id: 1, created_at: 1 });
 
+// ==================== WITHDRAWAL REQUEST ====================
+const withdrawalRequestSchema = new Schema({
+    id: { type: String, required: true, unique: true },
+    telegram_id: { type: Number, required: true, index: true },
+    user_name: { type: String, default: '' },
+    username: { type: String, default: '' },
+    amount: { type: Number, required: true },
+    status: {
+        type: String,
+        default: 'PENDING',
+        enum: ['PENDING', 'PROCESSING', 'APPROVED', 'REJECTED'],
+        index: true
+    },
+    fee_percent: { type: Number, default: 0 },
+    fee_amount: { type: Number, default: 0 },
+    net_amount: { type: Number, default: 0 },
+    spend_id: { type: String, default: '' },
+    reviewed_by: { type: Number },
+    reviewed_at: { type: Date },
+    rejection_reason: { type: String, default: '' },
+}, {
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    collection: 'fitmarket_withdrawal_requests'
+});
+
+// ==================== CRYPTO INVOICE ====================
+const cryptoInvoiceSchema = new Schema({
+    invoice_id: { type: String, required: true, unique: true },
+    type: { type: String, required: true, enum: ['deposit', 'purchase'] },
+    status: { type: String, default: 'PROCESSING', enum: ['PROCESSING', 'DONE', 'FAILED'], index: true },
+    telegram_id: { type: Number },
+    program_id: { type: String },
+    amount: { type: Number },
+    asset: { type: String, default: 'USDT' },
+    error: { type: String, default: '' },
+    processed_at: { type: Date },
+}, {
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    collection: 'fitmarket_crypto_invoices'
+});
+
 // ==================== EXERCISE RECORD ====================
 const exerciseRecordSchema = new Schema({
     telegram_id: { type: Number, required: true, index: true },
@@ -182,5 +223,7 @@ export const Purchase = mongoose.model('FitmarketPurchase', purchaseSchema);
 export const AIMessage = mongoose.model('FitmarketAIMessage', aiMessageSchema);
 export const News = mongoose.model('FitmarketNews', newsSchema);
 export const SupportMessage = mongoose.model('FitmarketSupportMessage', supportMessageSchema);
+export const WithdrawalRequest = mongoose.model('FitmarketWithdrawalRequest', withdrawalRequestSchema);
+export const CryptoInvoice = mongoose.model('FitmarketCryptoInvoice', cryptoInvoiceSchema);
 export const ExerciseRecord = mongoose.model('FitmarketExerciseRecord', exerciseRecordSchema);
 export const Settings = mongoose.model('FitmarketSettings', settingsSchema);
