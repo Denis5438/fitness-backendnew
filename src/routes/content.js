@@ -138,7 +138,15 @@ router.post('/programs', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещён. Нужна роль тренера.' });
         }
 
-        const { title, description, category, difficulty, price, workouts, isPublished } = req.body;
+        const { title, description, category, difficulty, price, workouts, exercises, isPublished } = req.body;
+        const normalizedWorkouts = Array.isArray(workouts)
+            ? workouts
+            : Array.isArray(exercises)
+                ? exercises
+                : [];
+        const publishFlag = typeof isPublished === 'boolean'
+            ? isPublished
+            : (isPublished != null ? Boolean(isPublished) : true);
 
         const program = await createProgram(req.user.telegramId, {
             title,
@@ -146,8 +154,8 @@ router.post('/programs', authMiddleware, async (req, res) => {
             category,
             difficulty,
             price: price || 0,
-            workouts: workouts || [],
-            isPublished: isPublished || false,
+            workouts: normalizedWorkouts,
+            isPublished: publishFlag,
         });
 
         res.json({ success: true, program });
@@ -170,7 +178,11 @@ router.put('/programs/:id', authMiddleware, async (req, res) => {
             return res.status(403).json({ error: 'Нельзя редактировать чужую программу' });
         }
 
-        const updated = await updateProgram(req.params.id, req.body);
+        const updates = { ...req.body };
+        if (updates.workouts === undefined && Array.isArray(updates.exercises)) {
+            updates.workouts = updates.exercises;
+        }
+        const updated = await updateProgram(req.params.id, updates);
         res.json({ success: true, program: updated });
     } catch (error) {
         console.error('❌ Ошибка обновления программы:', error);
