@@ -19,7 +19,6 @@ import {
   deleteProgram,
   getPublishedPrograms,
   getPersonalPrograms,
-  getProgramsByAuthor,
   getTrainerPrograms,
   createWorkoutLog,
   getWorkoutLogs,
@@ -848,7 +847,7 @@ router.get('/workouts/records', authMiddleware, async (req, res) => {
 // GET /api/programs/my - Получить свои программы
 router.get('/programs/my', authMiddleware, async (req, res) => {
   try {
-    const programs = await getProgramsByAuthor(req.user.telegramId);
+    const programs = await getPersonalPrograms(req.user.telegramId);
     res.json({ success: true, programs });
   } catch (error) {
     console.error('Error getting personal programs:', error);

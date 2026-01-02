@@ -422,31 +422,12 @@ export async function getPersonalPrograms(telegramId) {
   }));
 }
 
-export async function getProgramsByAuthor(telegramId) {
-  const programs = await Program.find({ author_id: telegramId })
-    .sort({ created_at: -1 })
-    .lean();
-
-  return programs.map(prog => ({
-    id: prog.id,
-    authorId: prog.author_id,
-    title: prog.title,
-    description: prog.description,
-    category: prog.category,
-    difficulty: prog.difficulty,
-    durationWeeks: prog.duration_weeks,
-    price: prog.price,
-    isPublished: prog.is_published,
-    isPersonal: prog.is_personal,
-    workouts: prog.workouts,
-    purchaseCount: prog.purchase_count,
-    createdAt: prog.created_at,
-    updatedAt: prog.updated_at,
-  }));
-}
-
 export async function getTrainerPrograms(trainerId) {
-  const programs = await Program.find({ author_id: trainerId })
+  const programs = await Program.find({
+    author_id: trainerId,
+    is_personal: false,
+    is_published: true,
+  })
     .sort({ created_at: -1 })
     .lean();
 
