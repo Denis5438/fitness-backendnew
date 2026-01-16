@@ -481,6 +481,8 @@ export async function getWorkoutLogs(telegramId, limit = 50) {
     volume: log.volume || 0,
     notes: log.notes,
     completedAt: log.completed_at,
+    date: log.completed_at,
+    programTitle: log.workout_title || 'Тренировка',
   }));
 }
 
