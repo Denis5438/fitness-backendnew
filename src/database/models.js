@@ -215,47 +215,4 @@ const settingsSchema = new Schema({
     collection: 'fitmarket_settings'
 });
 
-// ==================== SOCIAL FEED ====================
-const postSchema = new Schema({
-    id: { type: String, required: true, unique: true },
-    author_id: { type: Number, required: true, index: true },
-    author_name: { type: String, default: '' },
-    author_username: { type: String, default: '' },
-    author_avatar: { type: String, default: '' },
-    author_roles: { type: [String], default: [] }, // Храним роли для галочки тренера
-    content: { type: String, default: '' },
-    image_url: { type: String, default: '' },
-    likes: { type: [Number], default: [] }, // Array of user_ids who liked
-    likes_count: { type: Number, default: 0 },
-}, {
-    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-    collection: 'fitmarket_posts'
-});
-postSchema.index({ created_at: -1 }); // Для сортировки по дате
 
-const commentSchema = new Schema({
-    id: { type: String, required: true, unique: true },
-    post_id: { type: String, required: true, index: true },
-    author_id: { type: Number, required: true },
-    author_name: { type: String, default: '' },
-    author_avatar: { type: String, default: '' },
-    text: { type: String, required: true },
-}, {
-    timestamps: { createdAt: 'created_at', updatedAt: false },
-    collection: 'fitmarket_comments'
-});
-
-export const User = mongoose.model('FitmarketUser', userSchema);
-export const TrainerRequest = mongoose.model('FitmarketTrainerRequest', trainerRequestSchema);
-export const Program = mongoose.model('FitmarketProgram', programSchema);
-export const WorkoutLog = mongoose.model('FitmarketWorkoutLog', workoutLogSchema);
-export const Purchase = mongoose.model('FitmarketPurchase', purchaseSchema);
-export const AIMessage = mongoose.model('FitmarketAIMessage', aiMessageSchema);
-export const News = mongoose.model('FitmarketNews', newsSchema);
-export const SupportMessage = mongoose.model('FitmarketSupportMessage', supportMessageSchema);
-export const WithdrawalRequest = mongoose.model('FitmarketWithdrawalRequest', withdrawalRequestSchema);
-export const CryptoInvoice = mongoose.model('FitmarketCryptoInvoice', cryptoInvoiceSchema);
-export const ExerciseRecord = mongoose.model('FitmarketExerciseRecord', exerciseRecordSchema);
-export const Settings = mongoose.model('FitmarketSettings', settingsSchema);
-export const Post = mongoose.model('FitmarketPost', postSchema);
-export const Comment = mongoose.model('FitmarketComment', commentSchema);
