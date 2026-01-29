@@ -6,6 +6,7 @@ import apiRouter from './routes/api.js';
 import { initCryptoPay } from './cryptoBot.js';
 import cryptoRouter from './routes/crypto.js';
 import contentRouter from './routes/content.js';
+import feedRouter from './routes/feed.js';
 import { WithdrawalRequest } from './database/models.js';
 
 const app = express();
@@ -76,6 +77,7 @@ setInterval(() => {
 app.use('/api', apiRouter);
 app.use('/api/crypto', cryptoRouter);
 app.use('/api/content', contentRouter);
+app.use('/api/feed', feedRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {
